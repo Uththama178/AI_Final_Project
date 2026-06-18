@@ -3,7 +3,8 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
 
-DATABASE_URL = "mysql+pymysql://root:@localhost/learnify_db"
+DATABASE_URL = "mysql+pymysql://root:2002abcd@localhost:3306/learnify_db"
+
 
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

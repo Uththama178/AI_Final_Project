@@ -6,7 +6,7 @@ from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.responses import JSONResponse
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
-
+from fastapi.middleware.cors import CORSMiddleware 
 from database import Base, engine, get_db
 from models import (
     AcademicPrediction, AppUser, Course, CourseRating,
@@ -28,6 +28,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 app = FastAPI(
     title="Learnify AI Smart Learning Platform API",
     lifespan=lifespan
+)
+origins = [
+    "http://127.0.0.1:5500",
+    "http://localhost:5500",
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 SECRET_KEY = "learnify-secret-key-change-me"
@@ -97,4 +108,8 @@ def login(user: schema.UserLogin, db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
 
     access_token = create_access_token({"sub": db_user.Email})
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {"access_token": access_token, 
+        "token_type": "bearer",
+        "user_name": db_user.Name,
+        "user_email": db_user.Email,
+        "user_role": db_user.Role}

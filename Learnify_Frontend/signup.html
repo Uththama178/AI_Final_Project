@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign Up - Learnify</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .auth-container {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #F6FAFD 0%, #B3CFE5 100%);
+            padding: 20px;
+        }
+        .auth-card {
+            background: var(--cls-white);
+            padding: 40px;
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(10, 25, 49, 0.1);
+            width: 100%;
+            max-width: 450px;
+        }
+        .auth-card h2 {
+            margin-bottom: 10px;
+            color: var(--cls-dark-navy);
+            text-align: center;
+        }
+        .auth-card p {
+            text-align: center;
+            color: rgba(10, 25, 49, 0.6);
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        .select-input {
+            width: 100%;
+            padding: 14px;
+            border-radius: 8px;
+            border: 1px solid rgba(74, 127, 167, 0.2);
+            background-color: var(--cls-light-bg);
+            outline: none;
+            font-size: 14px;
+            font-family: 'Poppins', sans-serif;
+        }
+        .message-box {
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            display: none;
+            text-align: center;
+        }
+        .success { background-color: #d4edda; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+
+    <div class="auth-container">
+        <div class="auth-card">
+            <h2>Create Account</h2>
+            <p>Join Learnify AI Smart Learning Platform</p>
+
+            <div id="messageBox" class="message-box"></div>
+
+            <form id="signupForm">
+                <div class="form-group">
+                    <label>Full Name</label>
+                    <input type="text" id="name" placeholder="Enter your full name" required class="form-input">
+                </div>
+                <div class="form-group">
+                    <label>Email Address</label>
+                    <input type="email" id="email" placeholder="Enter your email" required class="form-input">
+                </div>
+                <div class="form-group">
+                    <label>Role</label>
+                    <select id="role" class="select-input" required>
+    <option value="student">Student</option>
+    <option value="teacher">Teacher</option>
+    <option value="both">Both (Student & Teacher)</option>
+</select>
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="password" placeholder="At least 6 characters" minlength="6" required class="form-input">
+                </div>
+                <button type="submit" class="btn-primary" style="width: 100%; justify-content: center; margin-top: 10px;">
+                    Register Now <i class="fa-solid fa-user-plus"></i>
+                </button>
+            </form>
+            <p style="margin-top: 20px; margin-bottom: 0;">Already have an account? <a href="login.html" style="color: var(--cls-deep-blue); font-weight: 600; text-decoration: none;">Login</a></p>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('signupForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const msgBox = document.getElementById('messageBox');
+            const name = document.getElementById('name').value;
+            const email = document.getElementById('email').value;
+            const role = document.getElementById('role').value;
+            const password = document.getElementById('password').value;
+
+            // ඩේටා ටික JSON එකකට සකස් කිරීම (schema.py එකේ ආකාරයටම)
+            const signupData = {
+                Name: name,
+                Email: email,
+                Role: role,
+                Password: password
+            };
+
+            try {
+                // අපේ FastAPI බැක්ඇන්ඩ් එකට Fetch එකක් මඟින් සම්බන්ධ වීම 
+                const response = await fetch('http://127.0.0.1:8000/signup', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(signupData)
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    msgBox.className = "message-box success";
+                    msgBox.innerText = "Registration Successful! Redirecting to login...";
+                    msgBox.style.display = "block";
+                    setTimeout(() => window.location.href = 'login.html', 2000); 
+                } else {
+                    msgBox.className = "message-box error";
+                    msgBox.innerText = data.detail || "Registration failed!";
+                    msgBox.style.display = "block";
+                }
+            } catch (error) {
+                msgBox.className = "message-box error";
+                msgBox.innerText = "Cannot connect to Backend Server! (Make sure Uvicorn is running)";
+                msgBox.style.display = "block";
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Learnify - Teacher Dashboard</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div class="dashboard-wrapper">
+        <aside class="sidebar">
+            <div class="sidebar-profile">
+                <div class="profile-avatar">
+                    <i class="fa-solid fa-user-tie"></i>
+                </div>
+                <h3 id="teacher-display-name">Loading...</h3>
+                <p id="teacher-display-email">teacher@learnify.com</p>
+                <button class="btn-edit-profile"><i class="fa-solid fa-pen-to-square"></i> Edit Profile</button>
+            </div>
+
+            <ul class="sidebar-menu">
+                <li class="menu-item active" data-tab="create-course">
+                    <i class="fa-solid fa-circle-plus"></i> <span>Create Course</span>
+                </li>
+                <li class="menu-item" data-tab="my-courses">
+                    <i class="fa-solid fa-book-bookmark"></i> <span>My Courses</span>
+                </li>
+                <li class="menu-item" data-tab="student-details">
+                    <i class="fa-solid fa-graduation-cap"></i> <span>Students Details</span>
+                </li>
+            </ul>
+
+            <div class="sidebar-footer">
+                <button id="logout-btn" class="btn-logout">
+                    <i class="fa-solid fa-right-from-bracket"></i> <span>Logout</span>
+                </button>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <header class="content-header">
+                <h2>Dashboard User <span class="role-tag">Teacher</span></h2>
+                <div class="hamburger-menu"><i class="fa-solid fa-bars"></i></div>
+            </header>
+
+            <div class="content-body">
+                
+                <section id="create-course" class="tab-content active">
+                    <div class="dashboard-card">
+                        <div class="card-header">
+                            <h3><i class="fa-solid fa-folder-plus"></i> Upload New Course Details</h3>
+                            <p>Fill out the details below. AI will automatically generate a quiz based on your uploaded materials.</p>
+                        </div>
+                        
+                        <form id="course-upload-form" class="dashboard-form">
+                            <div class="form-group">
+                                <label for="course-title">Course Title <span class="required">*</span></label>
+                                <input type="text" id="course-title" placeholder="e.g., Introduction to Java OOP" required>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="course-desc">Course Description <span class="required">*</span></label>
+                                <textarea id="course-desc" rows="4" placeholder="Briefly describe what students will learn in this course..." required></textarea>
+                            </div>
+
+                            <div class="form-group-row">
+                                <div class="form-group">
+                                    <label for="course-price">Course Price (LKR) <span class="required">*</span></label>
+                                    <input type="number" id="course-price" value="0.00" min="0" step="0.01" required>
+                                </div>
+                            </div>
+
+                            <div class="upload-section-grid">
+                                <div class="upload-box compulsory">
+                                    <label><i class="fa-solid fa-video"></i> Upload Lesson Video <span class="required">*</span></label>
+                                    <div class="file-drop-zone">
+                                        <input type="file" id="course-video" accept="video/*" required>
+                                        <p>Drag & drop video or <span>Browse</span></p>
+                                        <small>MP4, MKV or AVI format (Compulsory)</small>
+                                    </div>
+                                </div>
+
+                                <div class="upload-box optional">
+                                    <label><i class="fa-solid fa-file-pdf"></i> Upload Lecture Note (PDF) <span class="optional-tag">(Optional)</span></label>
+                                    <div class="file-drop-zone">
+                                        <input type="file" id="course-pdf" accept=".pdf">
+                                        <p>Drag & drop PDF or <span>Browse</span></p>
+                                        <small>PDF documents only</small>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <button type="submit" class="btn-dashboard-submit">
+                                <i class="fa-solid fa-rocket"></i> Create & Launch Course
+                            </button>
+                        </form>
+                    </div>
+                </section>
+
+                <section id="my-courses" class="tab-content">
+                    <div class="dashboard-card">
+                        <h3><i class="fa-solid fa-layer-group"></i> Courses You Have Uploaded</h3>
+                        <p style="margin-bottom: 20px; color: rgba(10,25,49,0.6);">Below are the modules active on Learnify platform.</p>
+                        
+                        <div class="teacher-courses-grid" id="uploaded-courses-container">
+                            <div class="no-data-placeholder">
+                                <i class="fa-solid fa-box-open"></i>
+                                <p>No courses uploaded yet. Use the "Create Course" tab to launch your first course!</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="student-details" class="tab-content">
+                    <div class="dashboard-card">
+                        <h3><i class="fa-solid fa-users"></i> Enrolled Students & Performance Analytics</h3>
+                        <p style="margin-bottom: 20px; color: rgba(10,25,49,0.6);">Monitor mock exam marks and predictive AI risk metrics here.</p>
+                        
+                        <div class="table-responsive">
+                            <table class="analytics-table">
+                               <thead>
+                                   <tr>
+                                       <th>Student ID</th>
+                                       <th>Course Name</th>
+                                       <th>Quiz Marks</th>
+                                       <th>Attendance</th>
+                                       <th>AI Predicted Risk</th>
+                                   </tr>
+                               </thead>
+                               <tbody>
+                                   <tr>
+                                       <td>#ST1092</td>
+                                       <td>Java OOP Masterclass</td>
+                                       <td>85/100</td>
+                                       <td>92%</td>
+                                       <td><span class="badge risk-low">Low Risk</span></td>
+                                   </tr>
+                                   <tr>
+                                       <td>#ST1104</td>
+                                       <td>Java OOP Masterclass</td>
+                                       <td>42/100</td>
+                                       <td>60%</td>
+                                       <td><span class="badge risk-high">High Risk</span></td>
+                                   </tr>
+                               </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+            </div>
+        </main>
+    </div>
+
+    <script src="dashboard_teacher.js"></script>
+</body>
+</html>
