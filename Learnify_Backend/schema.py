@@ -35,3 +35,5 @@ class Token(BaseModel):
     user_role: str
 class TokenData(BaseModel):
     email: Optional[str] = None
+
+

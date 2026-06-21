@@ -929,3 +929,134 @@ footer {
     .main-content { margin-left: 70px; padding: 20px; }
     .upload-section-grid { grid-template-columns: 1fr; }
 }
+
+/* ==========================================================================
+   Learnify Customized 3-Chapter & AI Quiz Module CSS 
+   ========================================================================== */
+
+.section-divider {
+    width: 100%;
+    text-align: left;
+    margin: 35px 0 20px 0;
+    border-bottom: 2px dashed rgba(74, 127, 167, 0.2);
+    line-height: 0.1em;
+}
+
+.section-divider span {
+    background: #fff;
+    padding-right: 15px;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--cls-deep-blue);
+}
+
+.chapter-form-block {
+    background-color: rgba(74, 127, 167, 0.03);
+    border: 1px solid rgba(74, 127, 167, 0.15);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.chapter-form-block h4 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    color: var(--cls-dark-navy);
+    font-size: 16px;
+    border-left: 4px solid var(--cls-deep-blue);
+    padding-left: 10px;
+}
+
+.quiz-generation-panel {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 25px;
+}
+
+.btn-quiz-action {
+    flex: 1;
+    padding: 14px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: var(--transition);
+    color: #fff;
+}
+
+.execute-btn { background-color: #f39c12; }
+.execute-btn:hover { background-color: #d35400; transform: translateY(-1px); }
+
+.upload-btn { background-color: #2ecc71; }
+.upload-btn:hover { background-color: #27ae60; transform: translateY(-1px); }
+
+.quiz-preview-card {
+    background: #ffffff;
+    border: 2px dashed #f39c12;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 30px;
+}
+
+.quiz-preview-card h4 {
+    margin-top: 0;
+    color: #d35400;
+    font-size: 15px;
+    margin-bottom: 15px;
+}
+
+.placeholder-text {
+    font-style: italic;
+    color: #7f8c8d;
+    font-size: 13px;
+    margin: 0;
+}
+
+.question-verification-node {
+    background: var(--cls-light-bg);
+    border-left: 4px solid #f39c12;
+    padding: 15px;
+    border-radius: 4px;
+    margin-bottom: 15px;
+}
+
+.question-verification-node h5 {
+    margin: 0 0 8px 0;
+    color: var(--cls-dark-navy);
+    font-size: 13px;
+}
+
+.options-edit-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 8px;
+}
+
+.options-edit-grid label {
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.options-edit-grid input {
+    width: 80%;
+    padding: 5px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 12px;
+}
+
+.btn-large-full {
+    width: 100%;
+    padding: 18px !important;
+    font-size: 16px !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.5px;
+    background-color: var(--cls-dark-navy) !important;
+    box-shadow: 0 5px 15px rgba(10,25,49,0.2);
+}

@@ -51,8 +51,8 @@
                 <section id="create-course" class="tab-content active">
                     <div class="dashboard-card">
                         <div class="card-header">
-                            <h3><i class="fa-solid fa-folder-plus"></i> Upload New Course Details</h3>
-                            <p>Fill out the details below. AI will automatically generate a quiz based on your uploaded materials.</p>
+                            <h3><i class="fa-solid fa-folder-plus"></i> Upload New Course Details (3-Chapter System)</h3>
+                            <p>Provide course information, upload content for all 3 chapters, generate/approve individual AI quizzes, and launch your course module.</p>
                         </div>
                         
                         <form id="course-upload-form" class="dashboard-form">
@@ -67,34 +67,111 @@
                             </div>
 
                             <div class="form-group-row">
-                                <div class="form-group">
+                                <div class="form-group" style="max-width: 300px;">
                                     <label for="course-price">Course Price (LKR) <span class="required">*</span></label>
                                     <input type="number" id="course-price" value="0.00" min="0" step="0.01" required>
                                 </div>
                             </div>
 
-                            <div class="upload-section-grid">
-                                <div class="upload-box compulsory">
-                                    <label><i class="fa-solid fa-video"></i> Upload Lesson Video <span class="required">*</span></label>
-                                    <div class="file-drop-zone">
-                                        <input type="file" id="course-video" accept="video/*" required>
-                                        <p>Drag & drop video or <span>Browse</span></p>
-                                        <small>MP4, MKV or AVI format (Compulsory)</small>
-                                    </div>
-                                </div>
+                            <div class="section-divider">
+                                <span><i class="fa-solid fa-book"></i> Course Chapters Content (Compulsory 3 Chapters)</span>
+                            </div>
 
-                                <div class="upload-box optional">
-                                    <label><i class="fa-solid fa-file-pdf"></i> Upload Lecture Note (PDF) <span class="optional-tag">(Optional)</span></label>
-                                    <div class="file-drop-zone">
-                                        <input type="file" id="course-pdf" accept=".pdf">
-                                        <p>Drag & drop PDF or <span>Browse</span></p>
-                                        <small>PDF documents only</small>
+                            <div class="chapter-form-block">
+                                <h4>Chapter 1 Blueprint</h4>
+                                <div class="form-group" style="margin-bottom: 12px;">
+                                    <label for="ch1-title">Chapter 1 Title <span class="required">*</span></label>
+                                    <input type="text" id="ch1-title" placeholder="e.g., Objects and Classes Basics" required>
+                                </div>
+                                <div class="upload-section-grid">
+                                    <div class="upload-box compulsory">
+                                        <label><i class="fa-solid fa-video"></i> Upload Lesson Video <span class="required">*</span></label>
+                                        <div class="file-drop-zone">
+                                            <input type="file" id="ch1-video" accept="video/*" required>
+                                            <p>Video or <span>Browse</span></p>
+                                        </div>
+                                    </div>
+                                    <div class="upload-box compulsory">
+                                        <label><i class="fa-solid fa-file-pdf"></i> Upload Lecture Note (PDF) <span class="required">*</span></label>
+                                        <div class="file-drop-zone">
+                                            <input type="file" id="ch1-pdf" accept=".pdf" required>
+                                            <p>PDF or <span>Browse</span></p>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
 
-                            <button type="submit" class="btn-dashboard-submit">
-                                <i class="fa-solid fa-rocket"></i> Create & Launch Course
+                            <div class="chapter-form-block">
+                                <h4>Chapter 2 Blueprint</h4>
+                                <div class="form-group" style="margin-bottom: 12px;">
+                                    <label for="ch2-title">Chapter 2 Title <span class="required">*</span></label>
+                                    <input type="text" id="ch2-title" placeholder="e.g., Inheritance & Polymorphism" required>
+                                </div>
+                                <div class="upload-section-grid">
+                                    <div class="upload-box compulsory">
+                                        <label><i class="fa-solid fa-video"></i> Upload Lesson Video <span class="required">*</span></label>
+                                        <div class="file-drop-zone">
+                                            <input type="file" id="ch2-video" accept="video/*" required>
+                                            <p>Video or <span>Browse</span></p>
+                                        </div>
+                                    </div>
+                                    <div class="upload-box compulsory">
+                                        <label><i class="fa-solid fa-file-pdf"></i> Upload Lecture Note (PDF) <span class="required">*</span></label>
+                                        <div class="file-drop-zone">
+                                            <input type="file" id="ch2-pdf" accept=".pdf" required>
+                                            <p>PDF or <span>Browse</span></p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="chapter-form-block">
+                                <h4>Chapter 3 Blueprint</h4>
+                                <div class="form-group" style="margin-bottom: 12px;">
+                                    <label for="ch3-title">Chapter 3 Title <span class="required">*</span></label>
+                                    <input type="text" id="ch3-title" placeholder="e.g., Advanced Encapsulation & Interfaces" required>
+                                </div>
+                                <div class="upload-section-grid">
+                                    <div class="upload-box compulsory">
+                                        <label><i class="fa-solid fa-video"></i> Upload Lesson Video <span class="required">*</span></label>
+                                        <div class="file-drop-zone">
+                                            <input type="file" id="ch3-video" accept="video/*" required>
+                                            <p>Video or <span>Browse</span></p>
+                                        </div>
+                                    </div>
+                                    <div class="upload-box compulsory">
+                                        <label><i class="fa-solid fa-file-pdf"></i> Upload Lecture Note (PDF) <span class="required">*</span></label>
+                                        <div class="file-drop-zone">
+                                            <input type="file" id="ch3-pdf" accept=".pdf" required>
+                                            <p>PDF or <span>Browse</span></p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="section-divider">
+                                <span><i class="fa-solid fa-wand-sparkles"></i> AI Quiz Generation Flow (Chapter-wise 1-to-1 System)</span>
+                            </div>
+
+                            <div class="quiz-generation-panel">
+                                <button type="button" id="btn-execute-quiz" class="btn-quiz-action execute-btn">
+                                    <i class="fa-solid fa-gears"></i> Execute AI Quiz Generation
+                                </button>
+                            </div>
+
+                            <div id="quiz-preview-box" class="quiz-preview-card">
+                                <h4><i class="fa-solid fa-eye"></i> Chapter-wise Quiz Verification Panel</h4>
+                                <p style="font-size: 13px; color: gray; margin-bottom: 15px;">
+                                    Each chapter must have its own confirmed quiz as per backend business schemas. Review, edit errors, and click "Confirm & Lock" on each chapter card.
+                                </p>
+                                
+                                <div id="ai-quiz-chapters-wrapper">
+                                    <p class="placeholder-text">Please click "Execute AI Quiz Generation" to extract discrete MCQs for each individual chapter...</p>
+                                </div>
+                            </div>
+
+                            <button type="submit" class="btn-dashboard-submit btn-large-full">
+                                <i class="fa-solid fa-rocket"></i> CREATE & LAUNCH FULL MODULE COURSE
                             </button>
                         </form>
                     </div>
@@ -104,7 +181,6 @@
                     <div class="dashboard-card">
                         <h3><i class="fa-solid fa-layer-group"></i> Courses You Have Uploaded</h3>
                         <p style="margin-bottom: 20px; color: rgba(10,25,49,0.6);">Below are the modules active on Learnify platform.</p>
-                        
                         <div class="teacher-courses-grid" id="uploaded-courses-container">
                             <div class="no-data-placeholder">
                                 <i class="fa-solid fa-box-open"></i>
@@ -118,33 +194,32 @@
                     <div class="dashboard-card">
                         <h3><i class="fa-solid fa-users"></i> Enrolled Students & Performance Analytics</h3>
                         <p style="margin-bottom: 20px; color: rgba(10,25,49,0.6);">Monitor mock exam marks and predictive AI risk metrics here.</p>
-                        
                         <div class="table-responsive">
                             <table class="analytics-table">
                                <thead>
-                                   <tr>
-                                       <th>Student ID</th>
-                                       <th>Course Name</th>
-                                       <th>Quiz Marks</th>
-                                       <th>Attendance</th>
-                                       <th>AI Predicted Risk</th>
-                                   </tr>
+                                    <tr>
+                                        <th>Student ID</th>
+                                        <th>Course Name</th>
+                                        <th>Quiz Marks</th>
+                                        <th>Attendance</th>
+                                        <th>AI Predicted Risk</th>
+                                    </tr>
                                </thead>
                                <tbody>
-                                   <tr>
-                                       <td>#ST1092</td>
-                                       <td>Java OOP Masterclass</td>
-                                       <td>85/100</td>
-                                       <td>92%</td>
-                                       <td><span class="badge risk-low">Low Risk</span></td>
-                                   </tr>
-                                   <tr>
-                                       <td>#ST1104</td>
-                                       <td>Java OOP Masterclass</td>
-                                       <td>42/100</td>
-                                       <td>60%</td>
-                                       <td><span class="badge risk-high">High Risk</span></td>
-                                   </tr>
+                                    <tr>
+                                        <td>#ST1092</td>
+                                        <td>Java OOP Masterclass</td>
+                                        <td>85/100</td>
+                                        <td>92%</td>
+                                        <td><span class="badge risk-low">Low Risk</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td>#ST1104</td>
+                                        <td>Java OOP Masterclass</td>
+                                        <td>42/100</td>
+                                        <td>60%</td>
+                                        <td><span class="badge risk-high">High Risk</span></td>
+                                    </tr>
                                </tbody>
                             </table>
                         </div>

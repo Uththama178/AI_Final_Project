@@ -3,7 +3,6 @@ from typing import Optional, AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, status
-from fastapi.responses import JSONResponse
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 from fastapi.middleware.cors import CORSMiddleware 
@@ -15,7 +14,7 @@ from models import (
 )
 import schema
 import auth  
-
+from routers import teacher # 👈 1. අපේ අලුත් ටීචර් රවුටර් එක Import කිරීම
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
@@ -113,3 +112,7 @@ def login(user: schema.UserLogin, db: Session = Depends(get_db)):
         "user_name": db_user.Name,
         "user_email": db_user.Email,
         "user_role": db_user.Role}
+
+# 👈 2. ටීචර් රවුටර් එක FastAPI ඇප් එකට සම්බන්ධ කිරීම
+app.include_router(teacher.router)
+
