@@ -1,5 +1,5 @@
 document.addEventListener("DOMContentLoaded", function () {
-    
+
     // ==========================================
     // 1. 🛡️ ROUTE GUARD
     // ==========================================
@@ -56,8 +56,6 @@ document.addEventListener("DOMContentLoaded", function () {
     // ==========================================
     // 5. 🤖 INTERACTIVE 1-TO-1 CHAPTER QUIZ GENERATION & BUNDLE FLOW
     // ==========================================
-    const btnExecuteQuiz = document.getElementById("btn-execute-quiz");
-    const aiQuizChaptersWrapper = document.getElementById("ai-quiz-chapters-wrapper");
     const courseForm = document.getElementById("course-upload-form");
 
     let chapterQuizzesState = {
@@ -66,93 +64,131 @@ document.addEventListener("DOMContentLoaded", function () {
         3: { confirmed: false, data: null }
     };
 
-    // --- STEP A: EXECUTE AI QUIZ GENERATION ---
-    btnExecuteQuiz.addEventListener("click", function () {
-        const ch1Title = document.getElementById("ch1-title").value;
-        const ch2Title = document.getElementById("ch2-title").value;
-        const ch3Title = document.getElementById("ch3-title").value;
+    // --- STEP A: EXECUTE INDIVIDUAL CHAPTER AI QUIZ GENERATION ---
+    const executeQuizButtons = document.querySelectorAll(".btn-execute-chapter-quiz");
+    
+    executeQuizButtons.forEach(btn => {
+        btn.addEventListener("click", async function () {
+            const chNum = this.getAttribute("data-chap");
+            const chTitle = document.getElementById(`ch${chNum}-title`).value;
+            const chVideoUrl = document.getElementById(`ch${chNum}-video`).value;
+            const chPdf = document.getElementById(`ch${chNum}-pdf`).files[0];
 
-        if (!ch1Title || !ch2Title || !ch3Title) {
-            alert("⚠️ Please insert all Chapter titles before running the NLP AI Model generation!");
-            return;
-        }
+            // RAG Validation
+            if (!chTitle || !chVideoUrl || !chPdf) {
+                alert(`⚠️ Please insert Chapter ${chNum} Title, YouTube Video Link, and PDF before running the NLP AI Model generation!`);
+                return;
+            }
 
-        alert("🤖 Learnify T5 NLP Engine is processing files... Generating 1 target Quiz per Chapter.");
+            // බටන් එක Loading ස්වභාවයට පත් කිරීම
+            const originalBtnText = this.innerHTML;
+            this.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Generating via AI...`;
+            this.disabled = true;
 
-        const mockRawAiResponse = [
-            { chapterNum: 1, title: ch1Title, text: "Which component is mandatory to construct an Object in Java?", a: "Method", b: "Constructor", c: "Package", d: "Static Block", correct: "B" },
-            { chapterNum: 2, title: ch2Title, text: "Which Java keyword establishes a Parent-Child relationship between classes?", a: "implements", b: "extends", c: "super", d: "instanceof", correct: "B" },
-            { chapterNum: 3, title: ch3Title, text: "Hiding internal data blueprints and restricting direct access is known as?", a: "Polymorphism", b: "Inheritance", c: "Encapsulation", d: "Abstraction", correct: "C" }
-        ];
+            // 📦 FormData එක සකස් කිරීම (Swagger එකේ බලාපොරොත්තු වන Keys මයි)
+            const formData = new FormData();
+            formData.append("chapter_title", chTitle);
+            formData.append("youtube_url", chVideoUrl);
+            formData.append("file", chPdf); // Backend FastAPI එකේ 'file: UploadFile' නමට සමාන විය යුතුයි.
 
-        aiQuizChaptersWrapper.innerHTML = "";
+            try {
+                // 🚀 REAL FETCH CALL TO RAG GENERATOR ENDPOINT
+                const response = await fetch("http://127.0.0.1:8000/teacher/generate-quiz", {
+                    method: "POST",
+                    headers: {
+                        // ⚠️ අවධානයට: FormData යවද්දී Content-Type Header එක manually දාන්න එපා! Browser එකෙන්ම දාගන්න ඉඩ හරින්න.
+                        "Authorization": `Bearer ${token}`
+                    },
+                    body: formData
+                });
 
-        mockRawAiResponse.forEach((q) => {
-            aiQuizChaptersWrapper.innerHTML += `
-                <div class="chapter-quiz-card" id="quiz-card-ch${q.chapterNum}" style="border: 1px solid #ddd; padding: 15px; margin-bottom: 15px; background: #fdfdfd; border-radius: 8px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px;">
-                        <h5 style="color:#0a1931; margin:0;"><i class="fa-solid fa-file-lines"></i> Quiz for Chapter ${q.chapterNum}: ${q.title}</h5>
-                        <span id="badge-ch${q.chapterNum}" class="badge" style="background:#e74c3c; color:white; padding:3px 8px; border-radius:4px; font-size:11px;">Pending Approval</span>
+                if (!response.ok) {
+                    throw new Error(`Server returned error status: ${response.status}`);
+                }
+
+                // Backend එකෙන් ලැබෙන සැබෑ Quiz JSON එක (ප්‍රශ්නය සහ Option ටික)
+                const generatedQuiz = await response.json();
+                
+                // Backend එකෙන් එන දත්ත වල Keys (උදා: text, a, b, c, d, correct) නිවැරදිව පරීක්ෂා කරගන්න.
+                // මෙතනදී උපකල්පනය කරන්නේ Backend එකෙන් සරල ප්‍රශ්න Object එකක් එන බවයි.
+                const qText = generatedQuiz.text || "Generated AI Question Text";
+                const qA = generatedQuiz.a || "Option A";
+                const qB = generatedQuiz.b || "Option B";
+                const qC = generatedQuiz.c || "Option C";
+                const qD = generatedQuiz.d || "Option D";
+                const qCorrect = generatedQuiz.correct || "A";
+
+                const previewWrapper = document.getElementById(`quiz-preview-ch${chNum}`);
+
+                // ත්‍රාස්‍යජනක ලෙස සැබෑ AI දත්ත UI එක මත පෙන්වීම
+                previewWrapper.innerHTML = `
+                    <div class="chapter-quiz-card" id="quiz-card-ch${chNum}" style="border: 1px solid #ddd; padding: 15px; margin-top: 15px; background: #fdfdfd; border-radius: 8px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px;">
+                            <h5 style="color:#0a1931; margin:0;"><i class="fa-solid fa-file-lines"></i> Quiz for Chapter ${chNum}: ${chTitle}</h5>
+                            <span id="badge-ch${chNum}" class="badge" style="background:#e74c3c; color:white; padding:3px 8px; border-radius:4px; font-size:11px;">Pending Approval</span>
+                        </div>
+                        
+                        <div class="form-group" style="margin-bottom:8px;">
+                            <label style="font-size:12px; font-weight:600;">Question Text (You can Edit):</label>
+                            <input type="text" id="raw-qtext-${chNum}" value="${qText}" style="background:#fff;">
+                        </div>
+                        
+                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
+                            <label style="font-size:12px;">A: <input type="text" id="raw-optA-${chNum}" value="${qA}"></label>
+                            <label style="font-size:12px;">B: <input type="text" id="raw-optB-${chNum}" value="${qB}"></label>
+                            <label style="font-size:12px;">C: <input type="text" id="raw-optC-${chNum}" value="${qC}"></label>
+                            <label style="font-size:12px;">D: <input type="text" id="raw-optD-${chNum}" value="${qD}"></label>
+                        </div>
+
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <p style="margin:0; font-size:12px;">Correct Answer Key: <span style="color:#2ecc71; font-weight:700;" id="raw-correct-display-${chNum}">${qCorrect}</span></p>
+                            <button type="button" class="btn-confirm-chapter-quiz" data-chap="${chNum}" style="background:#2ecc71; color:#fff; border:none; padding:6px 12px; border-radius:4px; cursor:pointer;">
+                                <i class="fa-solid fa-check-double"></i> Confirm & Lock Quiz ${chNum}
+                            </button>
+                        </div>
                     </div>
-                    
-                    <div class="form-group" style="margin-bottom:8px;">
-                        <label style="font-size:12px; font-weight:600;">Question Text:</label>
-                        <input type="text" id="raw-qtext-${q.chapterNum}" value="${q.text}" style="background:#fff;">
-                    </div>
-                    
-                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
-                        <label style="font-size:12px;">A: <input type="text" id="raw-optA-${q.chapterNum}" value="${q.a}"></label>
-                        <label style="font-size:12px;">B: <input type="text" id="raw-optB-${q.chapterNum}" value="${q.b}"></label>
-                        <label style="font-size:12px;">C: <input type="text" id="raw-optC-${q.chapterNum}" value="${q.c}"></label>
-                        <label style="font-size:12px;">D: <input type="text" id="raw-optD-${q.chapterNum}" value="${q.d}"></label>
-                    </div>
+                `;
 
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <p style="margin:0; font-size:12px;">Correct Answer Key: <span style="color:#2ecc71; font-weight:700;">${q.correct}</span></p>
-                        <button type="button" class="btn-confirm-chapter-quiz" data-chap="${q.chapterNum}" data-correct="${q.correct}" style="background:#2ecc71; color:#fff; border:none; padding:6px 12px; border-radius:4px; cursor:pointer;">
-                            <i class="fa-solid fa-check-double"></i> Confirm & Lock Quiz ${q.chapterNum}
-                        </button>
-                    </div>
-                </div>
-            `;
-        });
+                // --- STEP B: INDIVIDUAL CONFIRMATION LINKING ---
+                previewWrapper.querySelector(".btn-confirm-chapter-quiz").addEventListener("click", function () {
+                    const questionText = document.getElementById(`raw-qtext-${chNum}`).value;
+                    const optA = document.getElementById(`raw-optA-${chNum}`).value;
+                    const optB = document.getElementById(`raw-optB-${chNum}`).value;
+                    const optC = document.getElementById(`raw-optC-${chNum}`).value;
+                    const optD = document.getElementById(`raw-optD-${chNum}`).value;
 
-        // --- STEP B: CONFIRMATION LOGIC ---
-        const confirmButtons = document.querySelectorAll(".btn-confirm-chapter-quiz");
-        confirmButtons.forEach(btn => {
-            btn.addEventListener("click", function () {
-                const chNum = this.getAttribute("data-chap");
-                const correctAnswerKey = this.getAttribute("data-correct");
+                    chapterQuizzesState[chNum].confirmed = true;
+                    chapterQuizzesState[chNum].data = {
+                        Quiz_Title: `Chapter ${chNum} Smart Assessment Quiz`,
+                        questions: [
+                            {
+                                Question_Text: questionText,
+                                Option_A: optA,
+                                Option_B: optB,
+                                Option_C: optC,
+                                Option_D: optD,
+                                Correct_Answer: qCorrect // AI එකෙන් ආපු Key එක කෙලින්ම ගන්නවා
+                            }
+                        ]
+                    };
 
-                const questionText = document.getElementById(`raw-qtext-${chNum}`).value;
-                const optA = document.getElementById(`raw-optA-${chNum}`).value;
-                const optB = document.getElementById(`raw-optB-${chNum}`).value;
-                const optC = document.getElementById(`raw-optC-${chNum}`).value;
-                const optD = document.getElementById(`raw-optD-${chNum}`).value;
+                    const badge = document.getElementById(`badge-ch${chNum}`);
+                    badge.textContent = "Verified & Locked";
+                    badge.style.background = "#2ecc71";
+                    document.getElementById(`quiz-card-ch${chNum}`).style.background = "#f4fbf7";
+                    document.getElementById(`quiz-card-ch${chNum}`).style.borderColor = "#2ecc71";
 
-                chapterQuizzesState[chNum].confirmed = true;
-                chapterQuizzesState[chNum].data = {
-                    Quiz_Title: `Chapter ${chNum} Smart Assessment Quiz`,
-                    Questions: [
-                        {
-                            Question_Text: questionText,
-                            Option_A: optA,
-                            Option_B: optB,
-                            Option_C: optC,
-                            Option_D: optD,
-                            Correct_Answer: correctAnswerKey
-                        }
-                    ]
-                };
+                    alert(`✅ Chapter ${chNum} Quiz staging successful. (Ready for final course launch)`);
+                });
 
-                const badge = document.getElementById(`badge-ch${chNum}`);
-                badge.textContent = "Verified & Locked";
-                badge.style.background = "#2ecc71";
-                document.getElementById(`quiz-card-ch${chNum}`).style.background = "#f4fbf7";
-                document.getElementById(`quiz-card-ch${chNum}`).style.borderColor = "#2ecc71";
-
-                alert(`✅ Chapter ${chNum} Quiz staging successful.`);
-            });
+            } catch (error) {
+                console.error("RAG Generation Error:", error);
+                alert(`❌ Failed to connect to AI RAG System! Please check your Backend.`);
+            } finally {
+                // බටන් එක යථා තත්ත්වයට පත් කිරීම
+                this.innerHTML = originalBtnText;
+                this.disabled = false;
+            }
         });
     });
 
@@ -170,43 +206,41 @@ document.addEventListener("DOMContentLoaded", function () {
             const description = document.getElementById("course-desc").value;
             const price = document.getElementById("course-price").value;
 
-            // Mismatches සියල්ල නිවැරදි කරන ලද Final Object Payload එක
             const finalCourseModulePayload = {
                 Title: title,
                 Description: description,
                 Price: parseFloat(price),
-                Chapters: [
+                chapters: [
                     {
                         Chapter_Number: 1,
                         Chapter_Title: document.getElementById("ch1-title").value,
-                        Video_Link_Or_Path: "uploads/videos/ch1_course_file.mp4", // *මීළඟ සතියේ File Upload එකට මාරු කරමු
-                        PDF_Link_Or_Path: "uploads/documents/ch1_course_file.pdf",
-                        Quiz: chapterQuizzesState[1].data
+                        Video_Link_Or_Path: document.getElementById("ch1-video").value, 
+                        PDF_Link_Or_Path: document.getElementById("ch1-pdf").files[0] ? document.getElementById("ch1-pdf").files[0].name : "uploads/ch1.pdf",
+                        quiz: chapterQuizzesState[1].data
                     },
                     {
                         Chapter_Number: 2,
                         Chapter_Title: document.getElementById("ch2-title").value,
-                        Video_Link_Or_Path: "uploads/videos/ch2_course_file.mp4",
-                        PDF_Link_Or_Path: "uploads/documents/ch2_course_file.pdf",
-                        Quiz: chapterQuizzesState[2].data
+                        Video_Link_Or_Path: document.getElementById("ch2-video").value,
+                        PDF_Link_Or_Path: document.getElementById("ch2-pdf").files[0] ? document.getElementById("ch2-pdf").files[0].name : "uploads/ch2.pdf",
+                        quiz: chapterQuizzesState[2].data
                     },
                     {
                         Chapter_Number: 3,
                         Chapter_Title: document.getElementById("ch3-title").value,
-                        Video_Link_Or_Path: "uploads/videos/ch3_course_file.mp4",
-                        PDF_Link_Or_Path: "uploads/documents/ch3_course_file.pdf",
-                        Quiz: chapterQuizzesState[3].data
+                        Video_Link_Or_Path: document.getElementById("ch3-video").value,
+                        PDF_Link_Or_Path: document.getElementById("ch3-pdf").files[0] ? document.getElementById("ch3-pdf").files[0].name : "uploads/ch3.pdf",
+                        quiz: chapterQuizzesState[3].data
                     }
                 ]
             };
 
             try {
-                // REAL FETCH CALL TO FASTAPI
-                const response = await fetch("http://127.0.0.1:8000/courses/create", {
+                const response = await fetch("http://127.0.0.1:8000/teacher/create-course", {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
-                        "Authorization": `Bearer ${token}` // Logged-in Teacher ගේ Token එක හරහා Secure කිරීම
+                        "Authorization": `Bearer ${token}`
                     },
                     body: JSON.stringify(finalCourseModulePayload)
                 });
@@ -215,7 +249,12 @@ document.addEventListener("DOMContentLoaded", function () {
                     const result = await response.json();
                     alert(`🎉 Success! Course "${title}" and 3 Quizzes uploaded to Database successfully!`);
                     courseForm.reset();
-                    aiQuizChaptersWrapper.innerHTML = `<p class="placeholder-text">Please click "Execute AI Quiz Generation"...</p>`;
+                    document.querySelectorAll(".chapter-quiz-preview-area").forEach(el => el.innerHTML = "");
+                    chapterQuizzesState = {
+                        1: { confirmed: false, data: null },
+                        2: { confirmed: false, data: null },
+                        3: { confirmed: false, data: null }
+                    };
                 } else {
                     const errorData = await response.json();
                     alert(`❌ Failed to save course: ${errorData.detail || "Server Error"}`);

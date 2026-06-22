@@ -1,7 +1,15 @@
 import os
 import shutil
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status
-from rag_core.rag_service import process_chapter_rag_quiz  # RAG Service එක සම්බන්ධ කිරීම
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status, Depends
+from sqlalchemy.orm import Session
+from database import get_db
+import models
+import schema  # Pydantic schemas සඳහා
+from jose import JWTError, jwt
+from fastapi.security import OAuth2PasswordBearer
+
+# RAG Service එක සම්බන්ධ කිරීම
+from rag_core.rag_service import process_chapter_rag_quiz  
 
 # 🛣️ Teacher Router එක සාදා ගැනීම
 router = APIRouter(
@@ -13,18 +21,41 @@ router = APIRouter(
 UPLOAD_DIR = "uploads/pdfs"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+# 🔐 JWT ටෝකන් එක හරහා User ව හඳුනා ගැනීමට අවශ්‍ය දේවල් (main.py එකට සමානයි)
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+SECRET_KEY = "learnify-secret-key-change-me"
+ALGORITHM = "HS256"
+
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    """ දැනට ලොග් වී සිටින පරිශීලකයා (AppUser) කවුදැයි තහවුරු කරගන්නා ශ්‍රිතය """
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get("sub")
+        if email is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+        
+    user = db.query(models.AppUser).filter(models.AppUser.Email == email.lower()).first()
+    if user is None:
+        raise credentials_exception
+    return user
+
+
+# ====================================================================================
+# 🤖 Endpoint 1: Generate Quiz (දැනට ඔයා ළඟ ඇති එකම කේතය)
+# ====================================================================================
 @router.post("/generate-quiz", status_code=status.HTTP_200_OK)
 async def generate_quiz_endpoint(
     chapter_title: str = Form(...),
-    youtube_url: str = Form(""),  # ටීචර් ලින්ක් එකක් නොදුන්නොත් හිස්ව බාරගනී
-    file: UploadFile = File(...)   # Frontend එකෙන් එන ෆයිල් Object එකේ නම 'file' ලෙස තබා ඇත
+    youtube_url: str = Form(""),  
+    file: UploadFile = File(...)   
 ):
-    """
-    පියවර 1 සහ 2: ටීචර් Form එක පුරවා 'Generate Quiz' බටන් එක ඔබද්දී ක්‍රියාත්මක වන API Endpoint එක.
-    මෙය PDF එක ආරක්ෂිතව සේව් කර, RAG පද්ධතිය හරහා MCQ සාදා දෙයි.
-    """
-    
-    # 1️⃣ ආරක්ෂිත පියවරක් ලෙස අප්ලෝඩ් කරන්නේ PDF එකක්මදැයි පරික්ෂා කිරීම
     if not file.filename.lower().endswith('.pdf'):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -32,24 +63,20 @@ async def generate_quiz_endpoint(
         )
 
     try:
-        # 2️⃣ Path Traversal ආරක්ෂාව සඳහා ෆයිල් එකේ නම පිරිසිදු කර Path එක සෑදීම
         clean_filename = os.path.basename(file.filename)
         file_path = os.path.join(UPLOAD_DIR, clean_filename)
 
-        # 3️⃣ shutil පාවිච්චි කර ආරක්ෂිතව සහ සර්වර් එකේ Memory එක බ්ලොක් නොවී PDF එක සේව් කිරීම
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
         print(f"[TEACHER ROUTER] File saved successfully at: {file_path}")
 
-        # 4️⃣ අපේ RAG Core Master Controller එක ක්‍රියාත්මක කිරීම
         quiz_data = process_chapter_rag_quiz(
             chapter_title=chapter_title,
             pdf_path=file_path,
             video_path=youtube_url
         )
 
-        # 5️⃣ සාර්ථක ප්‍රතිඵලය සහ පසුව ඩේටාබේස් එකට දැමීමට අවශ්‍ය pdf_path, youtube_url නැවත Frontend වෙත යැවීම
         return {
             "status": "Success",
             "message": f"Quiz generated successfully for chapter: {chapter_title}",
@@ -62,4 +89,88 @@ async def generate_quiz_endpoint(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error generating quiz: {str(e)}"
+        )
+
+
+# ====================================================================================
+# 💾 Endpoint 2: Confirm & Create Course (අලුතින් එකතු කරන Atomic Save එක)
+# ====================================================================================
+@router.post("/create-course", status_code=status.HTTP_201_CREATED)
+def create_entire_course(
+    payload: schema.CourseCreatePayload, 
+    db: Session = Depends(get_db),
+    current_user: models.AppUser = Depends(get_current_user)
+):
+    """
+    පියවර 4: ටීචර් සියල්ල පරික්ෂා කර අවසානයේ 'Confirm & Upload Course' බටන් එක එබූ විට ක්‍රියාත්මක වේ.
+    ලැබෙන සම්පූර්ණ JSON ව්‍යුහය එකම එක Database Transaction එකක් ඇතුලේ Tables 4කටම ලියයි.
+    """
+    # 1️⃣ ආරක්ෂාව: ලොග් වෙලා ඉන්නේ ටීචර් කෙනෙක්ද කියා බැලීම
+    if current_user.Role.lower() not in ["teacher", "both"]:
+        raise HTTPException(status_code=403, detail="මෙම ක්‍රියාව සිදු කිරීමට ඔබට අවසර නැත. ටීචර් කෙනෙකු ලෙස ලොග් වන්න.")
+
+    # 2️⃣ AppUser ගේ User_ID එකෙන් Teacher Table එකේ ඉන්න Teacher_ID එක සෙවීම
+    teacher_profile = db.query(models.Teacher).filter(models.Teacher.User_ID == current_user.User_ID).first()
+    if not teacher_profile:
+        raise HTTPException(status_code=404, detail="ටීචර් ප්‍රොෆයිල් එකක් හමු වුණේ නැත.")
+
+    try:
+        # 🏢 පියවර A: Course Table එකට දත්ත දැමීම
+        new_course = models.Course(
+            Teacher_ID=teacher_profile.Teacher_ID,
+            Title=payload.Title,
+            Description=payload.Description,
+            Price=payload.Price
+        )
+        db.add(new_course)
+        db.flush()  # Course_ID එක ජෙනරේට් කර ගැනීමට ෆ්ලෂ් කරයි
+
+        # 📖 පියවර B: Chapters ලූප් එකක් මඟින් කියවීම
+        for ch_data in payload.chapters:
+            new_chapter = models.CourseChapter(
+                Course_ID=new_course.Course_ID,
+                Chapter_Number=ch_data.Chapter_Number,
+                Chapter_Title=ch_data.Chapter_Title,
+                Video_Link_Or_Path=ch_data.Video_Link_Or_Path,  # YouTube Link එක සේව් වේ
+                PDF_Link_Or_Path=ch_data.PDF_Link_Or_Path        # PDF සේව් වුණු Path එක සේව් වේ
+            )
+            db.add(new_chapter)
+            db.flush()  # Chapter_ID එක ජෙනරේට් කර ගැනීමට ෆ්ලෂ් කරයි
+
+            # 🧠 පියවර C: එම Chapter එකට අදාළව Quiz එකක් තියෙනවා නම්
+            if ch_data.quiz:
+                new_quiz = models.Quiz(
+                    Chapter_ID=new_chapter.Chapter_ID,
+                    Quiz_Title=ch_data.quiz.Quiz_Title
+                )
+                db.add(new_quiz)
+                db.flush()  # Quiz_ID එක ජෙනරේට් කර ගැනීමට ෆ්ලෂ් කරයි
+
+                # 📝 පියවර D: Quiz එක ඇතුළේ තියෙන ප්‍රශ්න සේව් කිරීම
+                for q_data in ch_data.quiz.questions:
+                    new_question = models.Question(
+                        Quiz_ID=new_quiz.Quiz_ID,
+                        Question_Text=q_data.Question_Text,
+                        Option_A=q_data.Option_A,
+                        Option_B=q_data.Option_B,
+                        Option_C=q_data.Option_C,
+                        Option_D=q_data.Option_D,
+                        Correct_Answer=q_data.Correct_Answer
+                    )
+                    db.add(new_question)
+
+        # 🚀 කිසිදු දෝෂයක් නැත්නම් සියල්ල එක පාර ඩේටාබේස් එකේ ස්ථිරවම සේව් කිරීම
+        db.commit()
+        
+        return {
+            "status": "Success",
+            "message": "මුළු කෝස් එකම, පරිච්ඡේද සහ ක්විස් ප්‍රශ්න සියල්ල සාර්ථකව සේව් කරන ලදී!",
+            "course_id": new_course.Course_ID
+        }
+
+    except Exception as e:
+        db.rollback()  # මොකක් හරි වැරදුනොත් කලින් කරපු ඔක්කොම රෝල්බැක් කරයි
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"කෝස් එක සේව් කිරීම අසාර්ථකයි! දත්ත රෝල්බැක් කරන ලදී. Error: {str(e)}"
         )
