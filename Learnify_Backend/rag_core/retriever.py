@@ -1,9 +1,15 @@
-def retrieve_relevant_context(chunks: list[str], keyword: str) -> str:
+from rag_core.vector_store import get_chunks_by_chapter
+
+def retrieve_relevant_context(chapter_id: int, keyword: str) -> str:
     """
-    පරිච්ඡේදයේ මාතෘකාවට අදාළ වන Chunks පමණක් පෙරලා (Retrieve කර) එකතු කර Context එක සෑදීම.
+    In-Memory Store එකෙන් අදාළ Chapter එකේ Chunks කියවා, 
+    මාතෘකාවට (Keyword) ගැලපෙන හොඳම Chunks පෙරලා Context එක සෑදීම.
     """
+    # 🆕 සැබෑවටම සේව් වුණු Chunks ලබා ගැනීම
+    chunks = get_chunks_by_chapter(chapter_id)
+    
     if not chunks:
-        return "No source content available."
+        return "No source content available for this chapter."
         
     results = []
     search_query = keyword.lower()
@@ -12,8 +18,9 @@ def retrieve_relevant_context(chunks: list[str], keyword: str) -> str:
         if search_query in chunk.lower():
             results.append(chunk)
             
-    # කිසිවක් හමුනොවුණහොත් මුල්ම Chunks දෙක ලබා දීම
+    # කිසිවක් හමුනොවුණහොත් මුල්ම Chunks දෙක ලබා දේ
     if not results:
         results = chunks[:2]
         
-    return "\n\n--- Chunk Break ---\n\n".join(results[:3]) # උපරිම Chunks 3ක් ලබා දේ
+    # උපරිම Chunks 3ක් එකතු කර String එකක් ලෙස ලබා දීම
+    return "\n\n--- Chunk Break ---\n\n".join(results[:3])

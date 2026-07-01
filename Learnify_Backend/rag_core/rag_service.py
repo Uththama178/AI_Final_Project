@@ -19,13 +19,13 @@ def process_chapter_rag_quiz(pdf_path: str, video_path: str, chapter_title: str,
     # 3. Chunking
     chunks = split_text_into_chunks(combined_text)
     
-    # 4. Vector Storage (Dummy log)
+    # 4. 🆕 සැබෑ ලෙසම Memory Store එකට සේව් කිරීම
     save_chunks_to_vector_store(chunks, chapter_id)
     
-    # 5. Retrieval
-    context = retrieve_relevant_context(chunks, chapter_title)
+    # 5. 🆕 සැබෑ ලෙසම Chapter ID එක පාවිච්චි කර Context එක ලබා ගැනීම
+    context = retrieve_relevant_context(chapter_id, chapter_title)
     
-    # 6. Generation (Dummy AI)
+    # 6. Generation (AI හෝ Dummy)
     questions = generate_mcqs_from_context(context, chapter_title)
     
     return {

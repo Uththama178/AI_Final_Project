@@ -5,12 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Learnify - Teacher Dashboard</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght=300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
     <div class="dashboard-wrapper">
+        <!-- Sidebar Navigation -->
         <aside class="sidebar">
             <div class="sidebar-profile">
                 <div class="profile-avatar">
@@ -40,6 +41,7 @@
             </div>
         </aside>
 
+        <!-- Main Content Area -->
         <main class="main-content">
             <header class="content-header">
                 <h2>Dashboard User <span class="role-tag">Teacher</span></h2>
@@ -48,6 +50,7 @@
 
             <div class="content-body">
                 
+                <!-- Tab 1: Create Course -->
                 <section id="create-course" class="tab-content active">
                     <div class="dashboard-card">
                         <div class="card-header">
@@ -77,6 +80,7 @@
                                 <span><i class="fa-solid fa-book"></i> Course Chapters Content (Compulsory 3 Chapters)</span>
                             </div>
 
+                            <!-- Chapter 1 -->
                             <div class="chapter-form-block" style="border-left: 4px solid #3498db; padding-left: 15px; margin-bottom: 25px;">
                                 <h4>Chapter 1 Blueprint</h4>
                                 <div class="form-group" style="margin-bottom: 12px;">
@@ -84,17 +88,16 @@
                                     <input type="text" id="ch1-title" placeholder="e.g., Objects and Classes Basics" required>
                                 </div>
                                 <div class="upload-box compulsory">
-    <label><i class="fa-brands fa-youtube" style="color: #ff0000;"></i> Lesson Video YouTube Link <span class="required">*</span></label>
-    <div class="url-input-zone" style="margin-top: 5px;">
-        <input type="url" id="ch1-video" placeholder="https://www.youtube.com/watch?v=..." style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px;" required>
-    </div>
-</div>
-                                    <div class="upload-box compulsory">
-                                        <label><i class="fa-solid fa-file-pdf"></i> Upload Lecture Note (PDF) <span class="required">*</span></label>
-                                        <div class="file-drop-zone">
-                                            <input type="file" id="ch1-pdf" accept=".pdf" required>
-                                            <p>PDF or <span>Browse</span></p>
-                                        </div>
+                                    <label><i class="fa-brands fa-youtube" style="color: #ff0000;"></i> Lesson Video YouTube Link <span class="required">*</span></label>
+                                    <div class="url-input-zone" style="margin-top: 5px;">
+                                        <input type="url" id="ch1-video" placeholder="https://www.youtube.com/watch?v=..." style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px;" required>
+                                    </div>
+                                </div>
+                                <div class="upload-box compulsory" style="margin-top: 12px;">
+                                    <label><i class="fa-solid fa-file-pdf"></i> Upload Lecture Note (PDF) <span class="required">*</span></label>
+                                    <div class="file-drop-zone">
+                                        <input type="file" id="ch1-pdf" accept=".pdf" required>
+                                        <p>PDF or <span>Browse</span></p>
                                     </div>
                                 </div>
                                 <div class="quiz-generation-panel" style="margin-top: 15px;">
@@ -105,6 +108,7 @@
                                 <div id="quiz-preview-ch1" class="chapter-quiz-preview-area" style="margin-top: 10px;"></div>
                             </div>
 
+                            <!-- Chapter 2 -->
                             <div class="chapter-form-block" style="border-left: 4px solid #2ecc71; padding-left: 15px; margin-bottom: 25px;">
                                 <h4>Chapter 2 Blueprint</h4>
                                 <div class="form-group" style="margin-bottom: 12px;">
@@ -112,17 +116,16 @@
                                     <input type="text" id="ch2-title" placeholder="e.g., Inheritance & Polymorphism" required>
                                 </div>
                                 <div class="upload-box compulsory">
-    <label><i class="fa-brands fa-youtube" style="color: #ff0000;"></i> Lesson Video YouTube Link <span class="required">*</span></label>
-    <div class="url-input-zone" style="margin-top: 5px;">
-        <input type="url" id="ch2-video" placeholder="https://www.youtube.com/watch?v=..." style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px;" required>
-    </div>
-</div>
-                                    <div class="upload-box compulsory">
-                                        <label><i class="fa-solid fa-file-pdf"></i> Upload Lecture Note (PDF) <span class="required">*</span></label>
-                                        <div class="file-drop-zone">
-                                            <input type="file" id="ch2-pdf" accept=".pdf" required>
-                                            <p>PDF or <span>Browse</span></p>
-                                        </div>
+                                    <label><i class="fa-brands fa-youtube" style="color: #ff0000;"></i> Lesson Video YouTube Link <span class="required">*</span></label>
+                                    <div class="url-input-zone" style="margin-top: 5px;">
+                                        <input type="url" id="ch2-video" placeholder="https://www.youtube.com/watch?v=..." style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px;" required>
+                                    </div>
+                                </div>
+                                <div class="upload-box compulsory" style="margin-top: 12px;">
+                                    <label><i class="fa-solid fa-file-pdf"></i> Upload Lecture Note (PDF) <span class="required">*</span></label>
+                                    <div class="file-drop-zone">
+                                        <input type="file" id="ch2-pdf" accept=".pdf" required>
+                                        <p>PDF or <span>Browse</span></p>
                                     </div>
                                 </div>
                                 <div class="quiz-generation-panel" style="margin-top: 15px;">
@@ -133,24 +136,24 @@
                                 <div id="quiz-preview-ch2" class="chapter-quiz-preview-area" style="margin-top: 10px;"></div>
                             </div>
 
+                            <!-- Chapter 3 -->
                             <div class="chapter-form-block" style="border-left: 4px solid #9b59b6; padding-left: 15px; margin-bottom: 25px;">
                                 <h4>Chapter 3 Blueprint</h4>
                                 <div class="form-group" style="margin-bottom: 12px;">
                                     <label for="ch3-title">Chapter 3 Title <span class="required">*</span></label>
                                     <input type="text" id="ch3-title" placeholder="e.g., Advanced Encapsulation & Interfaces" required>
                                 </div>
-                               <div class="upload-box compulsory">
-    <label><i class="fa-brands fa-youtube" style="color: #ff0000;"></i> Lesson Video YouTube Link <span class="required">*</span></label>
-    <div class="url-input-zone" style="margin-top: 5px;">
-        <input type="url" id="ch3-video" placeholder="https://www.youtube.com/watch?v=..." style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px;" required>
-    </div>
-</div>
-                                    <div class="upload-box compulsory">
-                                        <label><i class="fa-solid fa-file-pdf"></i> Upload Lecture Note (PDF) <span class="required">*</span></label>
-                                        <div class="file-drop-zone">
-                                            <input type="file" id="ch3-pdf" accept=".pdf" required>
-                                            <p>PDF or <span>Browse</span></p>
-                                        </div>
+                                <div class="upload-box compulsory">
+                                    <label><i class="fa-brands fa-youtube" style="color: #ff0000;"></i> Lesson Video YouTube Link <span class="required">*</span></label>
+                                    <div class="url-input-zone" style="margin-top: 5px;">
+                                        <input type="url" id="ch3-video" placeholder="https://www.youtube.com/watch?v=..." style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px;" required>
+                                    </div>
+                                </div>
+                                <div class="upload-box compulsory" style="margin-top: 12px;">
+                                    <label><i class="fa-solid fa-file-pdf"></i> Upload Lecture Note (PDF) <span class="required">*</span></label>
+                                    <div class="file-drop-zone">
+                                        <input type="file" id="ch3-pdf" accept=".pdf" required>
+                                        <p>PDF or <span>Browse</span></p>
                                     </div>
                                 </div>
                                 <div class="quiz-generation-panel" style="margin-top: 15px;">
@@ -168,6 +171,7 @@
                     </div>
                 </section>
 
+                <!-- Tab 2: My Courses -->
                 <section id="my-courses" class="tab-content">
                     <div class="dashboard-card">
                         <h3><i class="fa-solid fa-layer-group"></i> Courses You Have Uploaded</h3>
@@ -181,13 +185,14 @@
                     </div>
                 </section>
 
+                <!-- Tab 3: Student Details -->
                 <section id="student-details" class="tab-content">
                     <div class="dashboard-card">
                         <h3><i class="fa-solid fa-users"></i> Enrolled Students & Performance Analytics</h3>
                         <p style="margin-bottom: 20px; color: rgba(10,25,49,0.6);">Monitor mock exam marks and predictive AI risk metrics here.</p>
                         <div class="table-responsive">
                             <table class="analytics-table">
-                               <thead>
+                                <thead>
                                     <tr>
                                         <th>Student ID</th>
                                         <th>Course Name</th>
@@ -195,8 +200,8 @@
                                         <th>Attendance</th>
                                         <th>AI Predicted Risk</th>
                                     </tr>
-                                Hindu
-                               <tbody>
+                                </thead>
+                                <tbody>
                                     <tr>
                                         <td>#ST1092</td>
                                         <td>Java OOP Masterclass</td>

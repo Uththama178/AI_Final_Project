@@ -1,5 +1,6 @@
 import os
 import shutil
+import uuid  # 🆕 අලුත් Unique නමක් හැදීම සඳහා
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status, Depends
 from sqlalchemy.orm import Session
 from database import get_db
@@ -8,7 +9,7 @@ import schema  # Pydantic schemas සඳහා
 from jose import JWTError, jwt
 from fastapi.security import OAuth2PasswordBearer
 
-# RAG Service එක සම්බන්ධ කිරීම
+# RAG Service එක සම්බන්ධ කිරීම (AI Module එකට ඉඩ තබා ඇත)
 from rag_core.rag_service import process_chapter_rag_quiz  
 
 # 🛣️ Teacher Router එක සාදා ගැනීම
@@ -21,9 +22,9 @@ router = APIRouter(
 UPLOAD_DIR = "uploads/pdfs"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-# 🔐 JWT ටෝකන් එක හරහා User ව හඳුනා ගැනීමට අවශ්‍ය දේවල් (main.py එකට සමානයි)
+# 🔐 JWT ටෝකන් එක හරහා User ව හඳුනා ගැනීමට අවශ්‍ය දේවල්
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
-SECRET_KEY = "learnify-secret-key-change-me"
+SECRET_KEY = "learnify-secret-key-change-me"  # 💡 Localhost නිසා දැනට මෙසේ තැබිය හැක, පසුව main එකෙන් import කල හැක.
 ALGORITHM = "HS256"
 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
@@ -48,14 +49,32 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
 
 
 # ====================================================================================
-# 🤖 Endpoint 1: Generate Quiz (දැනට ඔයා ළඟ ඇති එකම කේතය)
+# 🤖 Endpoint 1: Generate Quiz (ආරක්ෂිත සහ සකස් කරන ලද කේතය)
 # ====================================================================================
 @router.post("/generate-quiz", status_code=status.HTTP_200_OK)
 async def generate_quiz_endpoint(
     chapter_title: str = Form(...),
     youtube_url: str = Form(""),  
-    file: UploadFile = File(...)   
+    file: UploadFile = File(...),
+    current_user: models.AppUser = Depends(get_current_user)  # 🆕 1. Auth Check එකක් එකතු කලා (ලොග් වුනු අයට පමණයි)
 ):
+    # 🆕 2. අවසර පරික්ෂාව (ටීචර් කෙනෙක්ද කියා බැලීම)
+    if current_user.Role.lower() not in ["teacher", "both"]:
+        raise HTTPException(status_code=403, detail="මෙම ක්‍රියාව සිදු කිරීමට ඔබට අවසර නැත.")
+
+    # 🆕 3. File Size Validation (උපරිම 50MB) - සර්වර් එක ආරක්ෂා කිරීමට
+    MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 Megabytes
+    file.file.seek(0, os.SEEK_END)
+    file_size = file.file.tell()
+    file.file.seek(0)  # ආපසු මුලට Reset කිරීම
+    
+    if file_size > MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="ෆයිල් එක විශාල වැඩියි! කරුණාකර 50MB ට වඩා අඩු PDF එකක් අප්ලෝඩ් කරන්න."
+        )
+
+    # PDF එකක්ද කියා බැලීම
     if not file.filename.lower().endswith('.pdf'):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -63,14 +82,17 @@ async def generate_quiz_endpoint(
         )
 
     try:
-        clean_filename = os.path.basename(file.filename)
-        file_path = os.path.join(UPLOAD_DIR, clean_filename)
+        # 🆕 4. Duplicate Filename Risk එක නැති කිරීමට UUID එකක් නමට එකතු කිරීම
+        clean_basename = os.path.basename(file.filename)
+        unique_filename = f"{uuid.uuid4().hex}_{clean_basename}"
+        file_path = os.path.join(UPLOAD_DIR, unique_filename)
 
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
         print(f"[TEACHER ROUTER] File saved successfully at: {file_path}")
 
+        # AI Module එකට දත්ත යැවීම
         quiz_data = process_chapter_rag_quiz(
             chapter_title=chapter_title,
             pdf_path=file_path,
@@ -93,7 +115,7 @@ async def generate_quiz_endpoint(
 
 
 # ====================================================================================
-# 💾 Endpoint 2: Confirm & Create Course (අලුතින් එකතු කරන Atomic Save එක)
+# 💾 Endpoint 2: Confirm & Create Course (Atomic Save)
 # ====================================================================================
 @router.post("/create-course", status_code=status.HTTP_201_CREATED)
 def create_entire_course(
@@ -102,12 +124,15 @@ def create_entire_course(
     current_user: models.AppUser = Depends(get_current_user)
 ):
     """
-    පියවර 4: ටීචර් සියල්ල පරික්ෂා කර අවසානයේ 'Confirm & Upload Course' බටන් එක එබූ විට ක්‍රියාත්මක වේ.
-    ලැබෙන සම්පූර්ණ JSON ව්‍යුහය එකම එක Database Transaction එකක් ඇතුලේ Tables 4කටම ලියයි.
+    ටීචර් සියල්ල පරික්ෂා කර අවසානයේ 'Confirm & Upload Course' බටන් එක එබූ විට ක්‍රියාත්මක වේ.
     """
     # 1️⃣ ආරක්ෂාව: ලොග් වෙලා ඉන්නේ ටීචර් කෙනෙක්ද කියා බැලීම
     if current_user.Role.lower() not in ["teacher", "both"]:
         raise HTTPException(status_code=403, detail="මෙම ක්‍රියාව සිදු කිරීමට ඔබට අවසර නැත. ටීචර් කෙනෙකු ලෙස ලොග් වන්න.")
+
+    # 🆕 5. Backend Input Validation: මිල සෘණ අගයක්ද කියා බැලීම
+    if payload.Price < 0:
+        raise HTTPException(status_code=400, detail="කෝස් එකේ මිල සෘණ අගයක් විය නොහැක.")
 
     # 2️⃣ AppUser ගේ User_ID එකෙන් Teacher Table එකේ ඉන්න Teacher_ID එක සෙවීම
     teacher_profile = db.query(models.Teacher).filter(models.Teacher.User_ID == current_user.User_ID).first()
@@ -131,8 +156,8 @@ def create_entire_course(
                 Course_ID=new_course.Course_ID,
                 Chapter_Number=ch_data.Chapter_Number,
                 Chapter_Title=ch_data.Chapter_Title,
-                Video_Link_Or_Path=ch_data.Video_Link_Or_Path,  # YouTube Link එක සේව් වේ
-                PDF_Link_Or_Path=ch_data.PDF_Link_Or_Path        # PDF සේව් වුණු Path එක සේව් වේ
+                Video_Link_Or_Path=ch_data.Video_Link_Or_Path,  # YouTube Link එක සේဝ် වේ
+                PDF_Link_Or_Path=ch_data.PDF_Link_Or_Path        # PDF සේဝ် වුණු Path එක සේဝ် වේ
             )
             db.add(new_chapter)
             db.flush()  # Chapter_ID එක ජෙනරේට් කර ගැනීමට ෆ්ලෂ් කරයි

@@ -1,5 +1,7 @@
 import os
+import re
 from pypdf import PdfReader
+from youtube_transcript_api import YouTubeTranscriptApi
 
 def extract_text_from_pdf(pdf_path: str) -> str:
     """
@@ -19,21 +21,33 @@ def extract_text_from_pdf(pdf_path: str) -> str:
         print(f"PDF Loader Error: {str(e)}")
         return ""
 
+def extract_youtube_id(url: str) -> str:
+    """
+    YouTube URL එකකින් වීඩියෝ ID එක (v=XXXXX) පමණක් වෙන් කර ගැනීම.
+    """
+    pattern = r'(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})'
+    match = re.search(pattern, url)
+    return match.group(1) if match else None
+
 def extract_transcript_from_video(video_path: str) -> str:
     """
-    වීඩියෝ එකකින් Transcript එක ලබා ගැනීම.
-    මෙතනට Local Path එකක් හෝ YouTube URL එකක් ආවත් වැඩ කරන ලෙස සකසා ඇත.
+    සැබෑ YouTube API එක භාවිතයෙන් වීඩියෝ එක ඇතුළේ ඇති උපශීර්ෂ (Subtitles/Transcript) ලබා ගැනීම.
     """
-    # 🔗 YouTube ලින්ක් එකක්ද කියලා බලන්න
-    if "http" in video_path or "youtube" in video_path or "youtu.be" in video_path:
-        print(f"[DOCUMENT LOADER] Processing YouTube URL: {video_path}")
-        # පසුව මෙතනට youtube-transcript-api වැනි සැබෑ AI Library එකක් ප්ලග් කෙරේ.
-        return f"This is a simulated transcript extracted from the YouTube video: {video_path}. It contains educational content related to the chapter."
-    
-    # 📁 සාමාන්‍ය වීඩියෝ ෆයිල් එකක් (Local File) ආවොත් චෙක් කරන ආකාරය
-    if os.path.exists(video_path):
-        print(f"[DOCUMENT LOADER] Processing Local Video File: {video_path}")
-        filename = os.path.basename(video_path)
-        return f"This is an automated simulation of the video lecture transcript extracted from {filename}."
-        
+    if "youtube" in video_path or "youtu.be" in video_path:
+        try:
+            video_id = extract_youtube_id(video_path)
+            if not video_id:
+                return "Could not extract YouTube Video ID."
+            
+            # YouTube එකෙන් Transcript එක Array එකක් විදිහට ලබා ගනී
+            transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
+            
+            # සියලුම වාක්‍ය එකට එකතු කර එකම ඡේදයක් (String) බවට පත් කිරීම
+            full_transcript = " ".join([t["text"] for t in transcript_list])
+            return full_transcript
+            
+        except Exception as e:
+            print(f"Error fetching YouTube transcript: {str(e)}")
+            return f"No English transcript found for this video. (Error: {str(e)})"
+            
     return ""
