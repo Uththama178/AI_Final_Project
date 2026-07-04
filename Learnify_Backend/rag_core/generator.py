@@ -1,5 +1,4 @@
 import os
-from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, pipeline
 
 # 🆕 ඔයාගේ AI Model එක සේව් කරන ෆෝල්ඩර් පාත් එක
 MODEL_PATH = "saved_models/learnify_t5"
@@ -8,10 +7,13 @@ quiz_pipeline = None
 # ෆෝල්ඩර් එක තිබේ නම් පමණක් සැබෑ Hugging Face Pipeline එක Load කරයි
 if os.path.exists(MODEL_PATH):
     try:
+        # 💡 ජාස්ට් ඉන් ටයිම් (Lazy Import) - ෆෝල්ඩර් එක තිබුණොත් විතරක් ලයිබ්‍රරි එක ලෝඩ් කරයි!
+        from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, pipeline
+        
         tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH)
         model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_PATH)
         quiz_pipeline = pipeline("text2text-generation", model=model, tokenizer=tokenizer)
-        print("🤖 AI Model successfully loaded into Learnify Backend!")
+        print("AI Model successfully loaded into Learnify Backend!")
     except Exception as e:
         print(f"⚠️ Model Loading Error: {str(e)}")
 
@@ -22,6 +24,7 @@ def generate_mcqs_from_context(context: str, chapter_title: str) -> list[dict]:
     """
     
     # 🔥 1. AI මොඩල් එක තවම නැතිනම් පෙන්වන සුපුරුදු Dummy ප්‍රශ්න ටික
+    # 🔥 1. AI මොඩල් එක තවම නැතිනම් පෙන්වන සුපුරුදු Dummy ප්‍රශ්න 10 (Copy-Paste ක්‍රමයට සකසන ලදී)
     if quiz_pipeline is None:
         return [
             {
@@ -39,6 +42,74 @@ def generate_mcqs_from_context(context: str, chapter_title: str) -> list[dict]:
                 "Option_C": "Legacy Deployment Architecture",
                 "Option_D": "Redundant Structural Schema",
                 "Correct_Answer": "B"
+            },
+            # 🔄 2 වන වර (ප්‍රශ්න 3 සහ 4)
+            {
+                "Question_Text": f"Based on the course materials provided for '{chapter_title}', what is the primary structural concept discussed? (Copy 1)",
+                "Option_A": "Architectural Component Protocol",
+                "Option_B": "Foundational Logic Framework",
+                "Option_C": "System Integration Mechanism",
+                "Option_D": "Abstract Virtual Processing",
+                "Correct_Answer": "A"
+            },
+            {
+                "Question_Text": f"According to the lecture video and PDF text, which core rule must be verified for '{chapter_title}'? (Copy 1)",
+                "Option_A": "Manual Optimization Process",
+                "Option_B": "Automated Constraints Validation",
+                "Option_C": "Legacy Deployment Architecture",
+                "Option_D": "Redundant Structural Schema",
+                "Correct_Answer": "B"
+            },
+            # 🔄 3 වන වර (ප්‍රශ්න 5 සහ 6)
+            {
+                "Question_Text": f"Based on the course materials provided for '{chapter_title}', what is the primary structural concept discussed? (Copy 2)",
+                "Option_A": "Architectural Component Protocol",
+                "Option_B": "Foundational Logic Framework",
+                "Option_C": "System Integration Mechanism",
+                "Option_D": "Abstract Virtual Processing",
+                "Correct_Answer": "A"
+            },
+            {
+                "Question_Text": f"According to the lecture video and PDF text, which core rule must be verified for '{chapter_title}'? (Copy 2)",
+                "Option_A": "Manual Optimization Process",
+                "Option_B": "Automated Constraints Validation",
+                "Option_C": "Legacy Deployment Architecture",
+                "Option_D": "Redundant Structural Schema",
+                "Correct_Answer": "B"
+            },
+            # 🔄 4 වන වර (ප්‍රශ්න 7 සහ 8)
+            {
+                "Question_Text": f"Based on the course materials provided for '{chapter_title}', what is the primary structural concept discussed? (Copy 3)",
+                "Option_A": "Architectural Component Protocol",
+                "Option_B": "Foundational Logic Framework",
+                "Option_C": "System Integration Mechanism",
+                "Option_D": "Abstract Virtual Processing",
+                "Correct_Answer": "A"
+            },
+            {
+                "Question_Text": f"According to the lecture video and PDF text, which core rule must be verified for '{chapter_title}'? (Copy 3)",
+                "Option_A": "Manual Optimization Process",
+                "Option_B": "Automated Constraints Validation",
+                "Option_C": "Legacy Deployment Architecture",
+                "Option_D": "Redundant Structural Schema",
+                "Correct_Answer": "B"
+            },
+            # 🔄 5 වන වර (ප්‍රශ්න 9 සහ 10)
+            {
+                "Question_Text": f"Based on the course materials provided for '{chapter_title}', what is the primary structural concept discussed? (Copy 4)",
+                "Option_A": "Architectural Component Protocol",
+                "Option_B": "Foundational Logic Framework",
+                "Option_C": "System Integration Mechanism",
+                "Option_D": "Abstract Virtual Processing",
+                "Correct_Answer": "A"
+            },
+            {
+                "Question_Text": f"According to the lecture video and PDF text, which core rule must be verified for '{chapter_title}'? (Copy 4)",
+                "Option_A": "Manual Optimization Process",
+                "Option_B": "Automated Constraints Validation",
+                "Option_C": "Legacy Deployment Architecture",
+                "Option_D": "Redundant Structural Schema",
+                "Correct_Answer": "B"
             }
         ]
         
@@ -51,8 +122,6 @@ def generate_mcqs_from_context(context: str, chapter_title: str) -> list[dict]:
         ai_output = quiz_pipeline(input_text, max_length=256, num_return_sequences=1)
         generated_text = ai_output[0]['generated_text']
         
-        # [NOTE] ඔයා Kaggle එකේ මොඩල් එක Train කරන විදිහ අනුව එන Text එක Split කරගන්න:
-        # උදාහරණයක් ලෙස: "Question Text?|Opt A|Opt B|Opt C|Opt D|CorrectAns" ලෙස එන්නේ නම්:
         parts = generated_text.split("|")
         if len(parts) >= 6:
             return [{
@@ -67,5 +136,4 @@ def generate_mcqs_from_context(context: str, chapter_title: str) -> list[dict]:
     except Exception as e:
         print(f"AI Generation Error: {str(e)}")
         
-    # මොඩල් එකේ මොනවා හරි අවුලක් වුණොත් සිස්ටම් එක ක්‍රෑෂ් වෙන්නේ නැති වෙන්න දෙන Fallback එක
     return [{"Question_Text": "Reviewing content... (AI Output Parsing Error)", "Option_A": "Retry", "Option_B": "N/A", "Option_C": "N/A", "Option_D": "N/A", "Correct_Answer": "A"}]

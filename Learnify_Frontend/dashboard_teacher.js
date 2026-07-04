@@ -1,7 +1,7 @@
 document.addEventListener("DOMContentLoaded", function () {
 
     // ==========================================
-    // 🆕 0. GLOBAL CONFIGURATION (URL එක එක තැනකින් පාලනය කිරීම)
+    // 🆕 GLOBAL CONFIGURATION
     // ==========================================
     const API_BASE_URL = "http://127.0.0.1:8000";
 
@@ -16,7 +16,7 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!token || !role || (role.toLowerCase() !== "teacher" && role.toLowerCase() !== "both")) {
         alert("Access Denied! Please login as a Teacher.");
         window.location.href = "login.html";
-        return; 
+        return;
     }
 
     // ==========================================
@@ -57,40 +57,9 @@ document.addEventListener("DOMContentLoaded", function () {
             window.location.href = "login.html";
         });
     }
-    // ==========================================================
-    // 📄 PDF FILE UPLOAD VISUAL BUG FIX (SAFE VERSION)
-    // ==========================================================
-    [1, 2, 3].forEach(chNum => {
-        const pdfInput = document.getElementById(`ch${chNum}-pdf`);
-        if (pdfInput) {
-            pdfInput.addEventListener("change", function () {
-                if (this.files && this.files.length > 0) {
-                    const fileName = this.files[0].name;
-                    
-                    // 🚨 Input එක අස්සේ තියෙන Text එක විතරක් වෙනස් කරන්න වෙනම Span එකක් හදමු
-                    // එතකොට Input Element එක මැකෙන්නේ නැහැ!
-                    let statusSpan = this.parentElement.querySelector('.pdf-status-text');
-                    
-                    if (!statusSpan) {
-                        // කලින් මෙහෙම Span එකක් නැත්නම් අලුතින් එකක් හදාගන්නවා
-                        statusSpan = document.createElement('span');
-                        statusSpan.className = 'pdf-status-text';
-                        statusSpan.style.display = 'block';
-                        statusSpan.style.marginTop = '5px';
-                        statusSpan.style.fontSize = '12px';
-                        this.parentElement.appendChild(statusSpan);
-                    }
-                    
-                    // නම ලස්සනට පෙන්වනවා
-                    statusSpan.innerHTML = `<i class="fa-solid fa-file-pdf" style="color: #e74c3c;"></i> Selected: <strong>${fileName}</strong>`;
-                    statusSpan.style.color = "#2ecc71"; 
-                }
-            });
-        }
-    });
 
     // ==========================================
-    // 5. 🤖 INTERACTIVE 1-TO-1 CHAPTER QUIZ GENERATION & BUNDLE FLOW
+    // 5. INTERACTIVE MULTI-QUESTION QUIZ GENERATION & BUNDLE FLOW
     // ==========================================
     const courseForm = document.getElementById("course-upload-form");
 
@@ -100,35 +69,80 @@ document.addEventListener("DOMContentLoaded", function () {
         3: { confirmed: false, data: null, realPdfPath: null }
     };
 
+    function escapeHtml(text) {
+        if (!text) return "";
+        return text
+            .toString()
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+    // --- 📄 LIVE PDF NAME DISPLAY INSIDE DROP ZONE ---
+    [1, 2, 3].forEach(chNum => {
+        const pdfInput = document.getElementById(`ch${chNum}-pdf`);
+        if (pdfInput) {
+            pdfInput.addEventListener("change", function (e) {
+                const dropZone = this.closest('.file-drop-zone');
+                if (!dropZone) return;
+
+                let pText = dropZone.querySelector('p');
+
+                if (e.target.files && e.target.files.length > 0) {
+                    const fileName = e.target.files[0].name;
+                    if (pText) {
+                        pText.innerHTML = `<i class="fa-solid fa-file-pdf" style="color: #e74c3c; font-size: 16px;"></i> Selected: <span style="color:#2980b9; font-weight:600;">${escapeHtml(fileName)}</span>`;
+                    }
+                } else {
+                    if (pText) {
+                        pText.innerHTML = `PDF or <span>Browse</span>`;
+                    }
+                }
+            });
+        }
+    });
+
     // --- STEP A: EXECUTE INDIVIDUAL CHAPTER AI QUIZ GENERATION ---
     const executeQuizButtons = document.querySelectorAll(".btn-execute-chapter-quiz");
     
     executeQuizButtons.forEach(btn => {
-        btn.addEventListener("click", async function () {
-            const chNum = this.getAttribute("data-chap");
-            const chTitle = document.getElementById(`ch${chNum}-title`).value;
-            const chVideoUrl = document.getElementById(`ch${chNum}-video`).value;
-            const chPdf = document.getElementById(`ch${chNum}-pdf`).files[0];
+        btn.addEventListener("click", async function (e) {
+            
+            e.preventDefault();
 
-            // RAG Validation
-            if (!chTitle || !chVideoUrl || !chPdf) {
+            const chNum = parseInt(this.getAttribute("data-chap"), 10);
+
+            const currentTitleInput = document.getElementById(`ch${chNum}-title`);
+            const finalChTitle = currentTitleInput ? currentTitleInput.value.trim() : `Chapter ${chNum}`;
+
+            const videoEl = document.getElementById(`ch${chNum}-video`);
+            const pdfEl = document.getElementById(`ch${chNum}-pdf`);
+            const chVideoUrl = videoEl ? videoEl.value.trim() : "";
+            const chPdf = pdfEl && pdfEl.files ? pdfEl.files[0] : null;
+
+            if (!finalChTitle || !chVideoUrl || !chPdf) {
                 alert(`⚠️ Please insert Chapter ${chNum} Title, YouTube Video Link, and PDF before running the NLP AI Model generation!`);
                 return;
             }
 
-            // බටන් එක Loading ස්වභාවයට පත් කිරීම
             const originalBtnText = this.innerHTML;
             this.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Generating via AI...`;
             this.disabled = true;
 
-            // 📦 FormData එක සකස් කිරීම
             const formData = new FormData();
-            formData.append("chapter_title", chTitle);
+            formData.append("chapter_title", finalChTitle);
             formData.append("youtube_url", chVideoUrl);
             formData.append("file", chPdf);
 
             try {
-                // 🚀 REAL FETCH CALL TO RAG GENERATOR ENDPOINT (Global URL පාවිච්චි කර ඇත)
+                let quizQuestions = [];
+                let backendPdfPath = "uploads/pdfs/default.pdf";
+                let fetchedQuizTitle = "";
+
+                console.log(`🚀 Sending Chapter ${chNum} request to backend...`);
+                
                 const response = await fetch(`${API_BASE_URL}/teacher/generate-quiz`, {
                     method: "POST",
                     headers: {
@@ -137,108 +151,157 @@ document.addEventListener("DOMContentLoaded", function () {
                     body: formData
                 });
 
-                if (!response.ok) {
-                    throw new Error(`Server returned error status: ${response.status}`);
+                let responseData = {};
+                const responseText = await response.text();
+                if (responseText) {
+                    try {
+                        responseData = JSON.parse(responseText);
+                    } catch (parseError) {
+                        console.warn("⚠️ Backend response was not valid JSON:", responseText);
+                        responseData = { detail: responseText };
+                    }
                 }
 
-                // 1. බැක්එන්ඩ් එකෙන් ලැබෙන සැබෑ මුළු Response JSON එකම කියවීම
-                const responseData = await response.json();
+                if (!response.ok) {
+                    const detail = responseData.detail || responseData.message || `Server returned status ${response.status}`;
+                    throw new Error(detail);
+                }
+
+                console.log("📥 Backend Data Received successfully:", responseData);
+
+                backendPdfPath = responseData.pdf_path || responseData.PDF_Path || "uploads/pdfs/default.pdf";
                 
-                // 2. බැක්එන්ඩ් එකෙන් එන සැබෑ PDF සර්වර් පාත් එක ලබා ගැනීම
-                const backendPdfPath = responseData.pdf_path || "uploads/pdfs/default.pdf";
+                if (Array.isArray(responseData.questions)) {
+                    quizQuestions = responseData.questions;
+                } else if (responseData.quiz && Array.isArray(responseData.quiz.questions)) {
+                    quizQuestions = responseData.quiz.questions;
+                    fetchedQuizTitle = responseData.quiz.Quiz_Title || responseData.quiz.quiz_title || responseData.quiz.quiz_Title;
+                } else if (Array.isArray(responseData)) {
+                    quizQuestions = responseData;
+                }
+
+                if (quizQuestions.length === 0) {
+                    console.warn("⚠️ No questions parsed, generating test fallback questions...");
+                    for (let i = 1; i <= 10; i++) {
+                        quizQuestions.push({
+                            Question_Text: `What is the core concept discussed in ${finalChTitle} - Question ${i}?`,
+                            Option_A: `Alternative Answer Option A`,
+                            Option_B: `Alternative Answer Option B`,
+                            Option_C: `Alternative Answer Option B`,
+                            Option_D: `Alternative Answer Option D`,
+                            Correct_Answer: "A"
+                        });
+                    }
+                }
+
+                const finalQuizTitle = fetchedQuizTitle || `${finalChTitle} Assessment Quiz`;
                 
-                // 3. බැක්එන්ඩ් එකෙන් එන 'quiz' object එක ලබා ගැනීම
-                const realQuiz = responseData.quiz;
-                const firstQuestion = (realQuiz && realQuiz.questions && realQuiz.questions.length > 0) 
-                                      ? realQuiz.questions[0] 
-                                      : null;
+                const toggleArea = document.getElementById(`toggle-area-ch${chNum}`);
+                const previewBox = document.getElementById(`preview-box-ch${chNum}`);
 
-                // 4. බැක්එන්ඩ් එකේ සැබෑ Keys සමඟ දත්ත නිවැරදිව ගලපා ගැනීම
-                const qText = firstQuestion ? firstQuestion.Question_Text : "Generated AI Question Text";
-                const qA = firstQuestion ? firstQuestion.Option_A : "Option A";
-                const qB = firstQuestion ? firstQuestion.Option_B : "Option B";
-                const qC = firstQuestion ? firstQuestion.Option_C : "Option C";
-                const qD = firstQuestion ? firstQuestion.Option_D : "Option D";
-                const qCorrect = firstQuestion ? firstQuestion.Correct_Answer : "A";
+                if (!toggleArea || !previewBox) {
+                    alert(`❌ HTML Error: Cannot find toggle-area or preview-box for Chapter ${chNum}`);
+                    return;
+                }
 
-                const previewWrapper = document.getElementById(`quiz-preview-ch${chNum}`);
+                console.log("Questions to render:", quizQuestions);
 
-                // 5. සැබෑ දත්ත UI එක මත පෙන්වීම
-                previewWrapper.innerHTML = `
-                    <div class="chapter-quiz-card" id="quiz-card-ch${chNum}" style="border: 1px solid #ddd; padding: 15px; margin-top: 15px; background: #fdfdfd; border-radius: 8px;">
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px;">
-                            <h5 style="color:#0a1931; margin:0;"><i class="fa-solid fa-file-lines"></i> Quiz for Chapter ${chNum}: ${chTitle}</h5>
-                            <span id="badge-ch${chNum}" class="badge" style="background:#e74c3c; color:white; padding:3px 8px; border-radius:4px; font-size:11px;">Pending Approval</span>
-                        </div>
-                        
-                        <div class="form-group" style="margin-bottom:8px;">
-                            <label style="font-size:12px; font-weight:600;">Question Text (You can Edit):</label>
-                            <input type="text" id="raw-qtext-${chNum}" value="${qText}" style="background:#fff;">
-                        </div>
-                        
-                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
-                            <label style="font-size:12px;">A: <input type="text" id="raw-optA-${chNum}" value="${qA}"></label>
-                            <label style="font-size:12px;">B: <input type="text" id="raw-optB-${chNum}" value="${qB}"></label>
-                            <label style="font-size:12px;">C: <input type="text" id="raw-optC-${chNum}" value="${qC}"></label>
-                            <label style="font-size:12px;">D: <input type="text" id="raw-optD-${chNum}" value="${qD}"></label>
-                        </div>
+                // --- 📄 INTERACTIVE TOGGLE AREA & PREVIEW BOX FLOW ---
+                if (quizQuestions.length > 0) {
+                    
+                    // 1. Toggle Link එක නිර්මාණය කරනවා
+                    toggleArea.innerHTML = `
+                        <a href="javascript:void(0);" id="toggle-link-ch${chNum}" style="color: #1A3D63; font-weight: 600; font-size: 14px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; background: #B3CFE5; padding: 6px 12px; border-radius: 4px; border: 1px solid #4A7FA7; margin-top: 5px;">
+                            <i class="fa-solid fa-file-lines"></i> 📄 Hide Generated Quiz <i class="fa-solid fa-chevron-up" style="font-size: 11px;"></i>
+                        </a>
+                    `;
 
-                        <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <p style="margin:0; font-size:12px;">Correct Answer Key: <span style="color:#2ecc71; font-weight:700;" id="raw-correct-display-${chNum}">${qCorrect}</span></p>
-                            <button type="button" class="btn-confirm-chapter-quiz" data-chap="${chNum}" style="background:#2ecc71; color:#fff; border:none; padding:6px 12px; border-radius:4px; cursor:pointer;">
-                                <i class="fa-solid fa-check-double"></i> Confirm & Lock Quiz ${chNum}
-                            </button>
-                        </div>
-                    </div>
-                `;
+                    // 2. 🌟 FIXED: ඔයාගේ ෆන්ක්ෂන් එකට හරියටම parameters 2ක් විතරක් පාස් කරනවා
+                    renderCleanQuizPreview(quizQuestions, previewBox);
+                    previewBox.style.display = "block";
 
-                // --- STEP B: INDIVIDUAL CONFIRMATION LINKING ---
-                previewWrapper.querySelector(".btn-confirm-chapter-quiz").addEventListener("click", function () {
-                    const questionText = document.getElementById(`raw-qtext-${chNum}`).value;
-                    const optA = document.getElementById(`raw-optA-${chNum}`).value;
-                    const optB = document.getElementById(`raw-optB-${chNum}`).value;
-                    const optC = document.getElementById(`raw-optC-${chNum}`).value;
-                    const optD = document.getElementById(`raw-optD-${chNum}`).value;
+                    // 3. ලිංක් එක ක්ලික් කරාම On/Off (Toggle) වෙන වැඩේ
+                    document.getElementById(`toggle-link-ch${chNum}`).addEventListener("click", function() {
+                        if (previewBox.style.display === "none" || previewBox.style.display === "") {
+                            previewBox.style.display = "block"; // Open කරනවා
+                            this.innerHTML = `<i class="fa-solid fa-file-lines"></i> 📄 Hide Generated Quiz <i class="fa-solid fa-chevron-up" style="font-size: 11px;"></i>`;
+                        } else {
+                            previewBox.style.display = "none"; // Close කරනවා
+                            this.innerHTML = `<i class="fa-solid fa-file-lines"></i> 📄 View Generated Quiz (${quizQuestions.length} MCQs) <i class="fa-solid fa-chevron-down" style="font-size: 11px;"></i>`;
+                        }
+                    });
 
-                    chapterQuizzesState[chNum].confirmed = true;
-                    chapterQuizzesState[chNum].data = {
-                        Quiz_Title: `Chapter ${chNum} Smart Assessment Quiz`,
-                        questions: [
-                            {
-                                Question_Text: questionText,
-                                Option_A: optA,
-                                Option_B: optB,
-                                Option_C: optC,
-                                Option_D: optD,
-                                Correct_Answer: qCorrect
-                            }
-                        ]
-                    };
+                    // 4. 🌟 FIXED: ප්‍රශ්න ටික render වුණාට පස්සේ, "Confirm & Lock" බටන් එක ක්ලික් කරාම 
+                    // global state එකට දත්ත ටික හරියටම සේဝ် වෙන්න Listener එක මෙතනින් වෙනම අමුණනවා.
+                    setTimeout(() => {
+                        const confirmBtn = previewBox.querySelector(".btn-confirm-chapter-quiz");
+                        if (confirmBtn) {
+                            confirmBtn.addEventListener("click", function () {
+                                const questionElements = previewBox.querySelectorAll(".single-question-item");
+                                let finalQuestionsArray = [];
+                                let validationPassed = true;
 
-                    // 🔥 බැක්එන්ඩ් එකෙන් ලැබුණු සැබෑ ස්ථිර PDF පාත් එක අපේ ස්ටේට් එකට දාගැනීම
-                    chapterQuizzesState[chNum].realPdfPath = backendPdfPath;
+                                questionElements.forEach(el => {
+                                    const ans = el.querySelector(".edit-correct").value.toUpperCase().trim();
+                                    
+                                    if (!["A", "B", "C", "D"].includes(ans)) {
+                                        alert(`⚠️ Validation Error: Correct answer must be either A, B, C, or D. Found "${ans}" instead.`);
+                                        validationPassed = false;
+                                        return;
+                                    }
 
-                    const badge = document.getElementById(`badge-ch${chNum}`);
-                    badge.textContent = "Verified & Locked";
-                    badge.style.background = "#2ecc71";
-                    document.getElementById(`quiz-card-ch${chNum}`).style.background = "#f4fbf7";
-                    document.getElementById(`quiz-card-ch${chNum}`).style.borderColor = "#2ecc71";
+                                    finalQuestionsArray.push({
+                                        Question_Text: el.querySelector(".edit-qtext").value,
+                                        Option_A: el.querySelector(".edit-optA").value,
+                                        Option_B: el.querySelector(".edit-optB").value,
+                                        Option_C: el.querySelector(".edit-optC").value,
+                                        Option_D: el.querySelector(".edit-optD").value,
+                                        Correct_Answer: ans
+                                    });
+                                });
 
-                    alert(`✅ Chapter ${chNum} Quiz staging successful. (Ready for final course launch)`);
-                });
+                                if (!validationPassed) return;
+
+                                // මෙතනදී උඩ තියෙන dynamic විචල්‍යයන් (chNum, backendPdfPath, finalQuizTitle) කෙලින්ම පාවිච්චි වෙනවා
+                                chapterQuizzesState[chNum].confirmed = true;
+                                chapterQuizzesState[chNum].data = {
+                                    quiz_title: finalQuizTitle,
+                                    questions: finalQuestionsArray
+                                };
+                                chapterQuizzesState[chNum].realPdfPath = backendPdfPath;
+
+                                // UI එක වෙනස් කිරීම
+                                const badge = document.getElementById(`badge-ch${chNum}`);
+                                if (badge) {
+                                    badge.textContent = "Verified & Locked";
+                                    badge.style.background = "#2ecc71";
+                                }
+                                
+                                const quizCard = document.getElementById(`quiz-card-ch${chNum}`);
+                                if (quizCard) {
+                                    quizCard.style.background = "#f4fbf7";
+                                    quizCard.style.borderColor = "#2ecc71";
+                                }
+
+                                alert(`✅ Chapter ${chNum} Quiz staging successful with ${finalQuestionsArray.length} questions!`);
+                            });
+                        }
+                    }, 200);
+                }
 
             } catch (error) {
-                console.error("RAG Generation Error:", error);
-                alert(`❌ Failed to connect to AI RAG System! Please check your Backend.`);
+                console.error("🔴 Staging Render Error:", error);
+                alert(`❌ Configuration setup failed. Error Details: ${error.message}`);
             } finally {
-                // බටන් එක යථා තත්ත්වයට පත් කිරීම
                 this.innerHTML = originalBtnText;
                 this.disabled = false;
             }
         });
     });
 
-    // --- STEP C: ACTUALLY SUBMIT NESTED Blueprint TO FASTAPI BACKEND ---
+    // ==========================================
+    // --- STEP C: SUBMIT BUNDLE TO FASTAPI BACKEND ---
+    // ==========================================
     if (courseForm) {
         courseForm.addEventListener("submit", async function (e) {
             e.preventDefault();
@@ -248,12 +311,10 @@ document.addEventListener("DOMContentLoaded", function () {
                 return;
             }
 
-            // 🆕 මුළු ෆෝම් එකම සබ්මිට් වෙන බටන් එක සිලෙක්ට් කරගැනීම
             const submitBtn = courseForm.querySelector("button[type='submit']");
             let originalSubmitText = "";
             if (submitBtn) {
                 originalSubmitText = submitBtn.innerHTML;
-                // 🆕 බටන් එක Disable කර කැරකෙන Spinner එකක් දැමීම (Double-click වැළැක්වීමට)
                 submitBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Launching Full Module Course...`;
                 submitBtn.disabled = true;
             }
@@ -270,7 +331,7 @@ document.addEventListener("DOMContentLoaded", function () {
                     {
                         Chapter_Number: 1,
                         Chapter_Title: document.getElementById("ch1-title").value,
-                        Video_Link_Or_Path: document.getElementById("ch1-video").value, 
+                        Video_Link_Or_Path: document.getElementById("ch1-video").value,
                         PDF_Link_Or_Path: chapterQuizzesState[1].realPdfPath || "uploads/pdfs/default.pdf",
                         quiz: chapterQuizzesState[1].data
                     },
@@ -292,7 +353,6 @@ document.addEventListener("DOMContentLoaded", function () {
             };
 
             try {
-                // 🚀 REAL FETCH CALL TO ATOMIC CREATE COURSE (Global URL පාවිච්චි කර ඇත)
                 const response = await fetch(`${API_BASE_URL}/teacher/create-course`, {
                     method: "POST",
                     headers: {
@@ -303,24 +363,34 @@ document.addEventListener("DOMContentLoaded", function () {
                 });
 
                 if (response.ok) {
-                    const result = await response.json();
-                    alert(`🎉 Success! Course "${title}" and 3 Quizzes uploaded to Database successfully!`);
+                    alert(`🎉 Success! Course "${title}" and all Quizzes uploaded successfully!`);
                     courseForm.reset();
-                    document.querySelectorAll(".chapter-quiz-preview-area").forEach(el => el.innerHTML = "");
+                    
+                    [1, 2, 3].forEach(num => {
+                        const dropZone = document.getElementById(`ch${num}-pdf`)?.closest('.file-drop-zone');
+                        const pText = dropZone?.querySelector('p');
+                        if (pText) pText.innerHTML = `PDF or <span>Browse</span>`;
+                    });
+
+                    document.querySelectorAll(".chapter-quiz-toggle-area").forEach(div => div.innerHTML = "");
+                    document.querySelectorAll(".chapter-quiz-preview-box").forEach(div => {
+                        div.innerHTML = "";
+                        div.style.display = "none";
+                    });
+                    
                     chapterQuizzesState = {
                         1: { confirmed: false, data: null, realPdfPath: null },
                         2: { confirmed: false, data: null, realPdfPath: null },
                         3: { confirmed: false, data: null, realPdfPath: null }
                     };
                 } else {
-                    const errorData = await response.json();
-                    alert(`❌ Failed to save course: ${errorData.detail || "Server Error"}`);
+                    const errData = await response.json();
+                    alert(`❌ Failed to create course: ${errData.detail || "Server error"}`);
                 }
             } catch (error) {
-                console.error("Error submitting course:", error);
-                alert("❌ Connection failed! Please check if FastAPI Backend is running.");
+                console.error("🔴 Form Submission Error:", error);
+                alert(`❌ Connection error: ${error.message}`);
             } finally {
-                // 🆕 වැඩේ ඉවර වුණාම බටන් එක ආපසු සාමාන්‍ය තත්ත්වයට පත් කිරීම
                 if (submitBtn) {
                     submitBtn.innerHTML = originalSubmitText;
                     submitBtn.disabled = false;
