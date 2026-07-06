@@ -5,8 +5,243 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Learnify - Teacher Dashboard</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght=300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
+    <style>
+        /* ============================================
+           ADDITIONAL STYLES FOR QUIZ PREVIEW
+           ============================================ */
+        .chapter-quiz-toggle-area {
+            margin-top: 12px;
+        }
+        
+        .chapter-quiz-preview-box {
+            display: none;
+            margin-top: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 15px;
+            border: 1px solid #e0e0e0;
+        }
+        
+        .chapter-quiz-preview-box.active {
+            display: block;
+        }
+        
+        .question-card-item {
+            background-color: #FFFFFF;
+            border: 1px solid #B3CFE5;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            transition: border-color 0.3s ease;
+        }
+        
+        .question-card-item:hover {
+            border-color: #4A7FA7;
+        }
+        
+        .btn-confirm-chapter-quiz {
+            background-color: #2ecc71;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            font-size: 14px;
+            font-weight: 600;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+        
+        .btn-confirm-chapter-quiz:hover {
+            background-color: #27ae60;
+        }
+        
+        .btn-confirm-chapter-quiz:disabled {
+            background-color: #95a5a6;
+            cursor: not-allowed;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        .badge-success {
+            background: #2ecc71;
+            color: white;
+        }
+        
+        .badge-warning {
+            background: #f39c12;
+            color: white;
+        }
+        
+        .badge-danger {
+            background: #e74c3c;
+            color: white;
+        }
+        
+        .chapter-form-block {
+            border-left: 4px solid #3498db;
+            padding-left: 15px;
+            margin-bottom: 25px;
+        }
+        
+        .chapter-form-block.chapter-1 { border-left-color: #3498db; }
+        .chapter-form-block.chapter-2 { border-left-color: #2ecc71; }
+        .chapter-form-block.chapter-3 { border-left-color: #9b59b6; }
+        
+        .file-drop-zone {
+            border: 2px dashed #B3CFE5;
+            border-radius: 6px;
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+        
+        .file-drop-zone:hover {
+            border-color: #4A7FA7;
+            background: #f0f7fb;
+        }
+        
+        .file-drop-zone input[type="file"] {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            cursor: pointer;
+        }
+        
+        .file-drop-zone p {
+            margin: 0;
+            color: #666;
+        }
+        
+        .file-drop-zone p span {
+            color: #3498db;
+            font-weight: 600;
+        }
+        
+        .btn-execute-chapter-quiz {
+            background: #3498db;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: background 0.3s ease;
+        }
+        
+        .btn-execute-chapter-quiz:hover {
+            background: #2980b9;
+        }
+        
+        .btn-execute-chapter-quiz:disabled {
+            background: #95a5a6;
+            cursor: not-allowed;
+        }
+        
+        .btn-dashboard-submit {
+            background: #1A3D63;
+            color: white;
+            padding: 14px 30px;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.3s ease;
+            width: 100%;
+        }
+        
+        .btn-dashboard-submit:hover {
+            background: #0A1931;
+        }
+        
+        .btn-dashboard-submit:disabled {
+            background: #95a5a6;
+            cursor: not-allowed;
+        }
+        
+        .section-divider {
+            margin: 30px 0 20px 0;
+            border-top: 2px solid #e0e0e0;
+            text-align: center;
+        }
+        
+        .section-divider span {
+            background: #f8f9fa;
+            padding: 0 15px;
+            position: relative;
+            top: -12px;
+            color: #1A3D63;
+            font-weight: 600;
+            font-size: 16px;
+        }
+        
+        .required {
+            color: #e74c3c;
+            font-weight: 600;
+        }
+        
+        .form-group {
+            margin-bottom: 16px;
+        }
+        
+        .form-group label {
+            display: block;
+            font-weight: 500;
+            margin-bottom: 5px;
+            color: #1A3D63;
+        }
+        
+        .form-group input,
+        .form-group textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            font-family: inherit;
+        }
+        
+        .form-group-row {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .dashboard-card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+            margin-bottom: 20px;
+        }
+        
+        .card-header {
+            margin-bottom: 20px;
+        }
+        
+        .card-header h3 {
+            color: #1A3D63;
+            margin-bottom: 8px;
+        }
+        
+        .card-header p {
+            color: #666;
+            font-size: 14px;
+        }
+    </style>
 </head>
 <body>
 
@@ -80,9 +315,11 @@
                                 <span><i class="fa-solid fa-book"></i> Course Chapters Content (Compulsory 3 Chapters)</span>
                             </div>
 
-                            <!-- Chapter 1 -->
-                            <div class="chapter-form-block" style="border-left: 4px solid #3498db; padding-left: 15px; margin-bottom: 25px;">
-                                <h4>Chapter 1 Blueprint</h4>
+                            <!-- ========================================== -->
+                            <!-- CHAPTER 1 -->
+                            <!-- ========================================== -->
+                            <div class="chapter-form-block chapter-1" id="quiz-card-ch1">
+                                <h4>Chapter 1 Blueprint <span id="badge-ch1" class="badge badge-warning">Pending</span></h4>
                                 <div class="form-group" style="margin-bottom: 12px;">
                                     <label for="ch1-title">Chapter 1 Title <span class="required">*</span></label>
                                     <input type="text" id="ch1-title" placeholder="e.g., Objects and Classes Basics" required>
@@ -97,22 +334,24 @@
                                     <label><i class="fa-solid fa-file-pdf"></i> Upload Lecture Note (PDF) <span class="required">*</span></label>
                                     <div class="file-drop-zone">
                                         <input type="file" id="ch1-pdf" accept=".pdf" required>
-                                        <p>PDF or <span>Browse</span></p>
+                                        <p>📄 PDF or <span>Browse</span></p>
                                     </div>
                                 </div>
                                 <div class="quiz-generation-panel" style="margin-top: 15px;">
-                                    <button type="button" class="btn-quiz-action execute-btn btn-execute-chapter-quiz" data-chap="1" style="background: #3498db; color: white; padding: 8px 15px; border: none; border-radius: 4px; cursor: pointer;">
+                                    <button type="button" class="btn-execute-chapter-quiz" data-chap="1" style="background: #3498db; color: white; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer;">
                                         <i class="fa-solid fa-gears"></i> Generate AI Quiz for Chapter 1
                                     </button>
                                 </div>
-                                <!-- 🌟 Chapter 1 Toggle Area & Preview Box -->
-                                <div class="chapter-quiz-toggle-area" id="toggle-area-ch1" style="margin-top: 12px;"></div>
-                                <div class="chapter-quiz-preview-box" id="preview-box-ch1" style="display: none; margin-top: 15px;"></div>
+                                <!-- Chapter 1 Toggle Area & Preview Box -->
+                                <div class="chapter-quiz-toggle-area" id="toggle-area-ch1"></div>
+                                <div class="chapter-quiz-preview-box" id="preview-box-ch1"></div>
                             </div>
 
-                            <!-- Chapter 2 -->
-                            <div class="chapter-form-block" style="border-left: 4px solid #2ecc71; padding-left: 15px; margin-bottom: 25px;">
-                                <h4>Chapter 2 Blueprint</h4>
+                            <!-- ========================================== -->
+                            <!-- CHAPTER 2 -->
+                            <!-- ========================================== -->
+                            <div class="chapter-form-block chapter-2" id="quiz-card-ch2">
+                                <h4>Chapter 2 Blueprint <span id="badge-ch2" class="badge badge-warning">Pending</span></h4>
                                 <div class="form-group" style="margin-bottom: 12px;">
                                     <label for="ch2-title">Chapter 2 Title <span class="required">*</span></label>
                                     <input type="text" id="ch2-title" placeholder="e.g., Inheritance & Polymorphism" required>
@@ -127,22 +366,24 @@
                                     <label><i class="fa-solid fa-file-pdf"></i> Upload Lecture Note (PDF) <span class="required">*</span></label>
                                     <div class="file-drop-zone">
                                         <input type="file" id="ch2-pdf" accept=".pdf" required>
-                                        <p>PDF or <span>Browse</span></p>
+                                        <p>📄 PDF or <span>Browse</span></p>
                                     </div>
                                 </div>
                                 <div class="quiz-generation-panel" style="margin-top: 15px;">
-                                    <button type="button" class="btn-quiz-action execute-btn btn-execute-chapter-quiz" data-chap="2" style="background: #2ecc71; color: white; padding: 8px 15px; border: none; border-radius: 4px; cursor: pointer;">
+                                    <button type="button" class="btn-execute-chapter-quiz" data-chap="2" style="background: #2ecc71; color: white; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer;">
                                         <i class="fa-solid fa-gears"></i> Generate AI Quiz for Chapter 2
                                     </button>
                                 </div>
-                                <!-- 🌟 Chapter 2 Toggle Area & Preview Box -->
-                                <div class="chapter-quiz-toggle-area" id="toggle-area-ch2" style="margin-top: 12px;"></div>
-                                <div class="chapter-quiz-preview-box" id="preview-box-ch2" style="display: none; margin-top: 15px;"></div>
+                                <!-- Chapter 2 Toggle Area & Preview Box -->
+                                <div class="chapter-quiz-toggle-area" id="toggle-area-ch2"></div>
+                                <div class="chapter-quiz-preview-box" id="preview-box-ch2"></div>
                             </div>
 
-                            <!-- Chapter 3 -->
-                            <div class="chapter-form-block" style="border-left: 4px solid #9b59b6; padding-left: 15px; margin-bottom: 25px;">
-                                <h4>Chapter 3 Blueprint</h4>
+                            <!-- ========================================== -->
+                            <!-- CHAPTER 3 -->
+                            <!-- ========================================== -->
+                            <div class="chapter-form-block chapter-3" id="quiz-card-ch3">
+                                <h4>Chapter 3 Blueprint <span id="badge-ch3" class="badge badge-warning">Pending</span></h4>
                                 <div class="form-group" style="margin-bottom: 12px;">
                                     <label for="ch3-title">Chapter 3 Title <span class="required">*</span></label>
                                     <input type="text" id="ch3-title" placeholder="e.g., Advanced Encapsulation & Interfaces" required>
@@ -157,20 +398,20 @@
                                     <label><i class="fa-solid fa-file-pdf"></i> Upload Lecture Note (PDF) <span class="required">*</span></label>
                                     <div class="file-drop-zone">
                                         <input type="file" id="ch3-pdf" accept=".pdf" required>
-                                        <p>PDF or <span>Browse</span></p>
+                                        <p>📄 PDF or <span>Browse</span></p>
                                     </div>
                                 </div>
                                 <div class="quiz-generation-panel" style="margin-top: 15px;">
-                                    <button type="button" class="btn-quiz-action execute-btn btn-execute-chapter-quiz" data-chap="3" style="background: #9b59b6; color: white; padding: 8px 15px; border: none; border-radius: 4px; cursor: pointer;">
+                                    <button type="button" class="btn-execute-chapter-quiz" data-chap="3" style="background: #9b59b6; color: white; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer;">
                                         <i class="fa-solid fa-gears"></i> Generate AI Quiz for Chapter 3
                                     </button>
                                 </div>
-                                <!-- 🌟 Chapter 3 Toggle Area & Preview Box -->
-                                <div class="chapter-quiz-toggle-area" id="toggle-area-ch3" style="margin-top: 12px;"></div>
-                                <div class="chapter-quiz-preview-box" id="preview-box-ch3" style="display: none; margin-top: 15px;"></div>
+                                <!-- Chapter 3 Toggle Area & Preview Box -->
+                                <div class="chapter-quiz-toggle-area" id="toggle-area-ch3"></div>
+                                <div class="chapter-quiz-preview-box" id="preview-box-ch3"></div>
                             </div>
 
-                            <button type="submit" class="btn-dashboard-submit btn-large-full" style="margin-top: 30px;">
+                            <button type="submit" class="btn-dashboard-submit" style="margin-top: 30px;">
                                 <i class="fa-solid fa-rocket"></i> CREATE & LAUNCH FULL MODULE COURSE
                             </button>
                         </form>
@@ -232,8 +473,13 @@
         </main>
     </div>
 
-    <!-- Script Links -->
+    <!-- ========================================== -->
+    <!-- SCRIPTS - Correct Loading Order            -->
+    <!-- ========================================== -->
+    <!-- 1. First load the quiz preview render function -->
     <script src="quiz_preview_render.js"></script>
+    <!-- 2. Then load the main dashboard logic -->
     <script src="dashboard_teacher.js"></script>
+
 </body>
 </html>

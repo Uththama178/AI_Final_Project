@@ -1060,3 +1060,229 @@ footer {
     background-color: var(--cls-dark-navy) !important;
     box-shadow: 0 5px 15px rgba(10,25,49,0.2);
 }
+/* ============================================
+   BASE STYLES - Learnify Teacher Dashboard
+   ============================================ */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Poppins', sans-serif;
+    background: #f0f4f8;
+    color: #1A3D63;
+    overflow-x: hidden;
+}
+
+/* ============================================
+   DASHBOARD WRAPPER
+   ============================================ */
+.dashboard-wrapper {
+    display: flex;
+    min-height: 100vh;
+}
+
+/* ============================================
+   SIDEBAR
+   ============================================ */
+.sidebar {
+    width: 270px;
+    background: #0A1931;
+    color: white;
+    padding: 25px 0;
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    height: 100vh;
+    left: 0;
+    top: 0;
+    overflow-y: auto;
+    z-index: 1000;
+    transition: all 0.3s ease;
+}
+
+.sidebar-profile {
+    text-align: center;
+    padding: 0 20px 25px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.profile-avatar {
+    width: 70px;
+    height: 70px;
+    background: #1A3D63;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 12px;
+    font-size: 30px;
+    border: 3px solid #4A7FA7;
+}
+
+.sidebar-profile h3 {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.sidebar-profile p {
+    font-size: 13px;
+    color: rgba(255,255,255,0.6);
+}
+
+.btn-edit-profile {
+    background: rgba(255,255,255,0.1);
+    color: white;
+    border: none;
+    padding: 6px 15px;
+    border-radius: 20px;
+    font-size: 12px;
+    cursor: pointer;
+    margin-top: 8px;
+    transition: background 0.3s ease;
+}
+
+.btn-edit-profile:hover {
+    background: rgba(255,255,255,0.2);
+}
+
+.sidebar-menu {
+    list-style: none;
+    padding: 20px 0;
+    flex: 1;
+}
+
+.sidebar-menu .menu-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 25px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    color: rgba(255,255,255,0.7);
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.sidebar-menu .menu-item:hover {
+    background: rgba(255,255,255,0.05);
+    color: white;
+}
+
+.sidebar-menu .menu-item.active {
+    background: #1A3D63;
+    color: white;
+    border-right: 3px solid #4A7FA7;
+}
+
+.sidebar-menu .menu-item i {
+    width: 20px;
+    text-align: center;
+}
+
+.sidebar-footer {
+    padding: 20px 25px;
+    border-top: 1px solid rgba(255,255,255,0.1);
+}
+
+.btn-logout {
+    background: rgba(231, 76, 60, 0.2);
+    color: #e74c3c;
+    border: 1px solid rgba(231, 76, 60, 0.3);
+    padding: 10px 20px;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    width: 100%;
+}
+
+.btn-logout:hover {
+    background: rgba(231, 76, 60, 0.3);
+}
+
+/* ============================================
+   MAIN CONTENT
+   ============================================ */
+.main-content {
+    margin-left: 270px;
+    flex: 1;
+    padding: 20px 30px 40px;
+}
+
+.content-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 30px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.content-header h2 {
+    font-size: 22px;
+    font-weight: 600;
+}
+
+.role-tag {
+    background: #4A7FA7;
+    color: white;
+    font-size: 12px;
+    padding: 3px 12px;
+    border-radius: 20px;
+    font-weight: 500;
+    margin-left: 10px;
+}
+
+.hamburger-menu {
+    display: none;
+    font-size: 24px;
+    cursor: pointer;
+}
+
+/* ============================================
+   TABS
+   ============================================ */
+.tab-content {
+    display: none;
+    animation: fadeIn 0.4s ease;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* ============================================
+   RESPONSIVE
+   ============================================ */
+@media (max-width: 768px) {
+    .sidebar {
+        transform: translateX(-100%);
+        width: 280px;
+    }
+    
+    .sidebar.open {
+        transform: translateX(0);
+    }
+    
+    .main-content {
+        margin-left: 0;
+        padding: 15px;
+    }
+    
+    .hamburger-menu {
+        display: block;
+    }
+}

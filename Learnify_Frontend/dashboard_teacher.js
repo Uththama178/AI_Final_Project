@@ -19,6 +19,8 @@ document.addEventListener("DOMContentLoaded", function () {
         return;
     }
 
+    console.log("✅ Teacher logged in:", userName);
+
     // ==========================================
     // 2. 👤 DISPLAY TEACHER INFO
     // ==========================================
@@ -97,23 +99,38 @@ document.addEventListener("DOMContentLoaded", function () {
                     }
                 } else {
                     if (pText) {
-                        pText.innerHTML = `PDF or <span>Browse</span>`;
+                        pText.innerHTML = `📄 PDF or <span>Browse</span>`;
                     }
                 }
             });
         }
     });
 
-    // --- STEP A: EXECUTE INDIVIDUAL CHAPTER AI QUIZ GENERATION ---
+    // ==========================================
+    // STEP A: EXECUTE INDIVIDUAL CHAPTER AI QUIZ GENERATION
+    // ==========================================
     const executeQuizButtons = document.querySelectorAll(".btn-execute-chapter-quiz");
     
     executeQuizButtons.forEach(btn => {
-        btn.addEventListener("click", async function (e) {
-            
+        // Ensure button doesn't submit form
+        btn.type = "button"; 
+
+        btn.addEventListener('click', async function (e) {
             e.preventDefault();
+            e.stopPropagation();
+            
+            // Block form submission
+            if (this.form) {
+                this.form.onsubmit = function(event) { 
+                    event.preventDefault(); 
+                    return false; 
+                };
+            }
 
             const chNum = parseInt(this.getAttribute("data-chap"), 10);
+            console.log(`🚀 Generating quiz for Chapter ${chNum}...`);
 
+            // Get form values
             const currentTitleInput = document.getElementById(`ch${chNum}-title`);
             const finalChTitle = currentTitleInput ? currentTitleInput.value.trim() : `Chapter ${chNum}`;
 
@@ -122,10 +139,13 @@ document.addEventListener("DOMContentLoaded", function () {
             const chVideoUrl = videoEl ? videoEl.value.trim() : "";
             const chPdf = pdfEl && pdfEl.files ? pdfEl.files[0] : null;
 
+            // Validate
             if (!finalChTitle || !chVideoUrl || !chPdf) {
-                alert(`⚠️ Please insert Chapter ${chNum} Title, YouTube Video Link, and PDF before running the NLP AI Model generation!`);
+                alert(`⚠️ Please insert Chapter ${chNum} Title, YouTube Video Link, and PDF before generating!`);
                 return;
             }
+
+            console.log(`📝 Chapter ${chNum}:`, { title: finalChTitle, video: chVideoUrl, pdf: chPdf.name });
 
             const originalBtnText = this.innerHTML;
             this.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Generating via AI...`;
@@ -140,8 +160,8 @@ document.addEventListener("DOMContentLoaded", function () {
                 let quizQuestions = [];
                 let backendPdfPath = "uploads/pdfs/default.pdf";
                 let fetchedQuizTitle = "";
-
-                console.log(`🚀 Sending Chapter ${chNum} request to backend...`);
+                
+                console.log(`📤 Sending Chapter ${chNum} to backend...`);
                 
                 const response = await fetch(`${API_BASE_URL}/teacher/generate-quiz`, {
                     method: "POST",
@@ -151,13 +171,18 @@ document.addEventListener("DOMContentLoaded", function () {
                     body: formData
                 });
 
+                console.log(`📊 Response status: ${response.status}`);
+
                 let responseData = {};
                 const responseText = await response.text();
+                console.log(`📄 Raw response length: ${responseText.length} chars`);
+                
                 if (responseText) {
                     try {
                         responseData = JSON.parse(responseText);
+                        console.log("✅ Response parsed successfully:", responseData);
                     } catch (parseError) {
-                        console.warn("⚠️ Backend response was not valid JSON:", responseText);
+                        console.warn("⚠️ Backend response was not valid JSON:", responseText.substring(0, 200));
                         responseData = { detail: responseText };
                     }
                 }
@@ -167,35 +192,41 @@ document.addEventListener("DOMContentLoaded", function () {
                     throw new Error(detail);
                 }
 
-                console.log("📥 Backend Data Received successfully:", responseData);
-
+                // Extract PDF path
                 backendPdfPath = responseData.pdf_path || responseData.PDF_Path || "uploads/pdfs/default.pdf";
                 
+                // Extract questions
                 if (Array.isArray(responseData.questions)) {
                     quizQuestions = responseData.questions;
+                    console.log(`✅ Found ${quizQuestions.length} questions in responseData.questions`);
                 } else if (responseData.quiz && Array.isArray(responseData.quiz.questions)) {
                     quizQuestions = responseData.quiz.questions;
                     fetchedQuizTitle = responseData.quiz.Quiz_Title || responseData.quiz.quiz_title || responseData.quiz.quiz_Title;
+                    console.log(`✅ Found ${quizQuestions.length} questions in responseData.quiz.questions`);
                 } else if (Array.isArray(responseData)) {
                     quizQuestions = responseData;
+                    console.log(`✅ Found ${quizQuestions.length} questions in responseData array`);
                 }
 
+                // If no questions, create fallback
                 if (quizQuestions.length === 0) {
-                    console.warn("⚠️ No questions parsed, generating test fallback questions...");
-                    for (let i = 1; i <= 10; i++) {
+                    console.warn("⚠️ No questions from backend, generating fallback questions...");
+                    for (let i = 1; i <= 5; i++) {
                         quizQuestions.push({
-                            Question_Text: `What is the core concept discussed in ${finalChTitle} - Question ${i}?`,
-                            Option_A: `Alternative Answer Option A`,
-                            Option_B: `Alternative Answer Option B`,
-                            Option_C: `Alternative Answer Option B`,
-                            Option_D: `Alternative Answer Option D`,
+                            Question_Text: `Sample Question ${i} about ${finalChTitle}`,
+                            Option_A: `Option A for Q${i}`,
+                            Option_B: `Option B for Q${i}`,
+                            Option_C: `Option C for Q${i}`,
+                            Option_D: `Option D for Q${i}`,
                             Correct_Answer: "A"
                         });
                     }
+                    console.log(`✅ Created ${quizQuestions.length} fallback questions`);
                 }
 
                 const finalQuizTitle = fetchedQuizTitle || `${finalChTitle} Assessment Quiz`;
                 
+                // Get DOM elements
                 const toggleArea = document.getElementById(`toggle-area-ch${chNum}`);
                 const previewBox = document.getElementById(`preview-box-ch${chNum}`);
 
@@ -204,108 +235,134 @@ document.addEventListener("DOMContentLoaded", function () {
                     return;
                 }
 
-                console.log("Questions to render:", quizQuestions);
+                console.log(`📊 Rendering ${quizQuestions.length} questions...`);
 
-                // --- 📄 INTERACTIVE TOGGLE AREA & PREVIEW BOX FLOW ---
-                if (quizQuestions.length > 0) {
-                    
-                    // 1. Toggle Link එක නිර්මාණය කරනවා
-                    toggleArea.innerHTML = `
-                        <a href="javascript:void(0);" id="toggle-link-ch${chNum}" style="color: #1A3D63; font-weight: 600; font-size: 14px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; background: #B3CFE5; padding: 6px 12px; border-radius: 4px; border: 1px solid #4A7FA7; margin-top: 5px;">
-                            <i class="fa-solid fa-file-lines"></i> 📄 Hide Generated Quiz <i class="fa-solid fa-chevron-up" style="font-size: 11px;"></i>
-                        </a>
-                    `;
-
-                    // 2. 🌟 FIXED: ඔයාගේ ෆන්ක්ෂන් එකට හරියටම parameters 2ක් විතරක් පාස් කරනවා
-                    renderCleanQuizPreview(quizQuestions, previewBox);
-                    previewBox.style.display = "block";
-
-                    // 3. ලිංක් එක ක්ලික් කරාම On/Off (Toggle) වෙන වැඩේ
-                    document.getElementById(`toggle-link-ch${chNum}`).addEventListener("click", function() {
-                        if (previewBox.style.display === "none" || previewBox.style.display === "") {
-                            previewBox.style.display = "block"; // Open කරනවා
-                            this.innerHTML = `<i class="fa-solid fa-file-lines"></i> 📄 Hide Generated Quiz <i class="fa-solid fa-chevron-up" style="font-size: 11px;"></i>`;
-                        } else {
-                            previewBox.style.display = "none"; // Close කරනවා
-                            this.innerHTML = `<i class="fa-solid fa-file-lines"></i> 📄 View Generated Quiz (${quizQuestions.length} MCQs) <i class="fa-solid fa-chevron-down" style="font-size: 11px;"></i>`;
-                        }
-                    });
-
-                    // 4. 🌟 FIXED: ප්‍රශ්න ටික render වුණාට පස්සේ, "Confirm & Lock" බටන් එක ක්ලික් කරාම 
-                    // global state එකට දත්ත ටික හරියටම සේဝ် වෙන්න Listener එක මෙතනින් වෙනම අමුණනවා.
-                    setTimeout(() => {
-                        const confirmBtn = previewBox.querySelector(".btn-confirm-chapter-quiz");
-                        if (confirmBtn) {
-                            confirmBtn.addEventListener("click", function () {
-                                const questionElements = previewBox.querySelectorAll(".single-question-item");
-                                let finalQuestionsArray = [];
-                                let validationPassed = true;
-
-                                questionElements.forEach(el => {
-                                    const ans = el.querySelector(".edit-correct").value.toUpperCase().trim();
-                                    
-                                    if (!["A", "B", "C", "D"].includes(ans)) {
-                                        alert(`⚠️ Validation Error: Correct answer must be either A, B, C, or D. Found "${ans}" instead.`);
-                                        validationPassed = false;
-                                        return;
-                                    }
-
-                                    finalQuestionsArray.push({
-                                        Question_Text: el.querySelector(".edit-qtext").value,
-                                        Option_A: el.querySelector(".edit-optA").value,
-                                        Option_B: el.querySelector(".edit-optB").value,
-                                        Option_C: el.querySelector(".edit-optC").value,
-                                        Option_D: el.querySelector(".edit-optD").value,
-                                        Correct_Answer: ans
-                                    });
-                                });
-
-                                if (!validationPassed) return;
-
-                                // මෙතනදී උඩ තියෙන dynamic විචල්‍යයන් (chNum, backendPdfPath, finalQuizTitle) කෙලින්ම පාවිච්චි වෙනවා
-                                chapterQuizzesState[chNum].confirmed = true;
-                                chapterQuizzesState[chNum].data = {
-                                    quiz_title: finalQuizTitle,
-                                    questions: finalQuestionsArray
-                                };
-                                chapterQuizzesState[chNum].realPdfPath = backendPdfPath;
-
-                                // UI එක වෙනස් කිරීම
-                                const badge = document.getElementById(`badge-ch${chNum}`);
-                                if (badge) {
-                                    badge.textContent = "Verified & Locked";
-                                    badge.style.background = "#2ecc71";
-                                }
-                                
-                                const quizCard = document.getElementById(`quiz-card-ch${chNum}`);
-                                if (quizCard) {
-                                    quizCard.style.background = "#f4fbf7";
-                                    quizCard.style.borderColor = "#2ecc71";
-                                }
-
-                                alert(`✅ Chapter ${chNum} Quiz staging successful with ${finalQuestionsArray.length} questions!`);
-                            });
-                        }
-                    }, 200);
+                // Check if render function exists
+                if (typeof renderCleanQuizPreview !== 'function') {
+                    console.error('❌ renderCleanQuizPreview function is not defined!');
+                    alert('Error: renderCleanQuizPreview function not loaded. Please check script loading order.');
+                    return;
                 }
 
+                // Render the quiz preview
+                renderCleanQuizPreview(quizQuestions, previewBox);
+                previewBox.style.display = "block";
+                previewBox.classList.add("active");
+
+                // Create toggle link
+                toggleArea.innerHTML = `
+                    <a href="javascript:void(0);" id="toggle-link-ch${chNum}" style="color: #1A3D63; font-weight: 600; font-size: 14px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; background: #B3CFE5; padding: 6px 12px; border-radius: 4px; border: 1px solid #4A7FA7; margin-top: 5px;">
+                        <i class="fa-solid fa-file-lines"></i> 📄 Hide Generated Quiz <i class="fa-solid fa-chevron-up" style="font-size: 11px;"></i>
+                    </a>
+                `;
+
+                // Toggle functionality
+                document.getElementById(`toggle-link-ch${chNum}`).addEventListener("click", function() {
+                    if (previewBox.style.display === "none" || previewBox.style.display === "") {
+                        previewBox.style.display = "block"; 
+                        previewBox.classList.add("active");
+                        this.innerHTML = `<i class="fa-solid fa-file-lines"></i> 📄 Hide Generated Quiz <i class="fa-solid fa-chevron-up" style="font-size: 11px;"></i>`;
+                    } else {
+                        previewBox.style.display = "none"; 
+                        previewBox.classList.remove("active");
+                        this.innerHTML = `<i class="fa-solid fa-file-lines"></i> 📄 View Generated Quiz (${quizQuestions.length} MCQs) <i class="fa-solid fa-chevron-down" style="font-size: 11px;"></i>`;
+                    }
+                });
+
+                // Confirm button functionality
+                setTimeout(() => {
+                    const confirmBtn = previewBox.querySelector(".btn-confirm-chapter-quiz");
+                    if (confirmBtn) {
+                        console.log("✅ Confirm button found, adding event listener...");
+                        confirmBtn.addEventListener("click", function () {
+                            console.log(`🔒 Confirm button clicked for Chapter ${chNum}`);
+                            
+                            const questionElements = previewBox.querySelectorAll(".single-question-item");
+                            let finalQuestionsArray = [];
+                            let validationPassed = true;
+
+                            if (questionElements.length === 0) {
+                                alert("⚠️ No questions found to confirm!");
+                                return;
+                            }
+
+                            questionElements.forEach((el, index) => {
+                                const ans = el.querySelector(".edit-correct").value.toUpperCase().trim();
+                                
+                                if (!["A", "B", "C", "D"].includes(ans)) {
+                                    alert(`⚠️ Validation Error: Question ${index + 1} - Correct answer must be A, B, C, or D. Found "${ans}" instead.`);
+                                    validationPassed = false;
+                                    return;
+                                }
+
+                                finalQuestionsArray.push({
+                                    Question_Text: el.querySelector(".edit-qtext").value,
+                                    Option_A: el.querySelector(".edit-optA").value,
+                                    Option_B: el.querySelector(".edit-optB").value,
+                                    Option_C: el.querySelector(".edit-optC").value,
+                                    Option_D: el.querySelector(".edit-optD").value,
+                                    Correct_Answer: ans
+                                });
+                            });
+
+                            if (!validationPassed) return;
+
+                            // Update state
+                            chapterQuizzesState[chNum].confirmed = true;
+                            chapterQuizzesState[chNum].data = {
+                                quiz_title: finalQuizTitle,
+                                questions: finalQuestionsArray
+                            };
+                            chapterQuizzesState[chNum].realPdfPath = backendPdfPath;
+
+                            console.log(`✅ Chapter ${chNum} confirmed:`, chapterQuizzesState[chNum]);
+
+                            // Update badge
+                            const badge = document.getElementById(`badge-ch${chNum}`);
+                            if (badge) {
+                                badge.textContent = "✅ Verified & Locked";
+                                badge.className = "badge badge-success";
+                            }
+                            
+                            // Update card
+                            const quizCard = document.getElementById(`quiz-card-ch${chNum}`);
+                            if (quizCard) {
+                                quizCard.style.background = "#f4fbf7";
+                                quizCard.style.borderColor = "#2ecc71";
+                            }
+
+                            // Disable confirm button
+                            this.disabled = true;
+                            this.innerHTML = `<i class="fa-solid fa-check-circle"></i> Confirmed ✓`;
+
+                            alert(`✅ Chapter ${chNum} Quiz confirmed with ${finalQuestionsArray.length} questions!`);
+                        });
+                    } else {
+                        console.warn(`⚠️ Confirm button not found for Chapter ${chNum}`);
+                    }
+                }, 300);
+
+                alert(`✅ Chapter ${chNum} Quiz generated with ${quizQuestions.length} questions!`);
+
             } catch (error) {
-                console.error("🔴 Staging Render Error:", error);
-                alert(`❌ Configuration setup failed. Error Details: ${error.message}`);
+                console.error(`🔴 Error generating quiz for Chapter ${chNum}:`, error);
+                alert(`❌ Error: ${error.message}`);
             } finally {
                 this.innerHTML = originalBtnText;
                 this.disabled = false;
+                console.log(`✅ Chapter ${chNum} process completed`);
             }
         });
     });
 
     // ==========================================
-    // --- STEP C: SUBMIT BUNDLE TO FASTAPI BACKEND ---
+    // STEP B: SUBMIT BUNDLE TO FASTAPI BACKEND
     // ==========================================
     if (courseForm) {
         courseForm.addEventListener("submit", async function (e) {
             e.preventDefault();
 
+            // Check all chapters are confirmed
             if (!chapterQuizzesState[1].confirmed || !chapterQuizzesState[2].confirmed || !chapterQuizzesState[3].confirmed) {
                 alert("⛔ Action Required: You must review and click 'Confirm & Lock Quiz' on ALL 3 Chapter Cards before launching!");
                 return;
@@ -352,6 +409,8 @@ document.addEventListener("DOMContentLoaded", function () {
                 ]
             };
 
+            console.log("📤 Submitting course:", finalCourseModulePayload);
+
             try {
                 const response = await fetch(`${API_BASE_URL}/teacher/create-course`, {
                     method: "POST",
@@ -366,16 +425,30 @@ document.addEventListener("DOMContentLoaded", function () {
                     alert(`🎉 Success! Course "${title}" and all Quizzes uploaded successfully!`);
                     courseForm.reset();
                     
+                    // Reset UI
                     [1, 2, 3].forEach(num => {
                         const dropZone = document.getElementById(`ch${num}-pdf`)?.closest('.file-drop-zone');
                         const pText = dropZone?.querySelector('p');
-                        if (pText) pText.innerHTML = `PDF or <span>Browse</span>`;
+                        if (pText) pText.innerHTML = `📄 PDF or <span>Browse</span>`;
+                        
+                        const badge = document.getElementById(`badge-ch${num}`);
+                        if (badge) {
+                            badge.textContent = "Pending";
+                            badge.className = "badge badge-warning";
+                        }
+                        
+                        const quizCard = document.getElementById(`quiz-card-ch${num}`);
+                        if (quizCard) {
+                            quizCard.style.background = "white";
+                            quizCard.style.borderColor = "#3498db";
+                        }
                     });
 
                     document.querySelectorAll(".chapter-quiz-toggle-area").forEach(div => div.innerHTML = "");
                     document.querySelectorAll(".chapter-quiz-preview-box").forEach(div => {
                         div.innerHTML = "";
                         div.style.display = "none";
+                        div.classList.remove("active");
                     });
                     
                     chapterQuizzesState = {
@@ -398,4 +471,6 @@ document.addEventListener("DOMContentLoaded", function () {
             }
         });
     }
+
+    console.log("✅ Teacher Dashboard initialized successfully!");
 });
