@@ -82,6 +82,16 @@ document.addEventListener("DOMContentLoaded", function () {
             .replace(/'/g, "&#039;");
     }
 
+    /** Map confirmed chapter quiz state to backend QuizCreate schema (Quiz_Title). */
+    function buildChapterQuizPayload(chapterState) {
+        const data = chapterState && chapterState.data ? chapterState.data : {};
+        const quiz_title = data.Quiz_Title || data.quiz_title || "Chapter Quiz";
+        return {
+            Quiz_Title: quiz_title,
+            questions: Array.isArray(data.questions) ? data.questions : []
+        };
+    }
+
     // --- 📄 LIVE PDF NAME DISPLAY INSIDE DROP ZONE ---
     [1, 2, 3].forEach(chNum => {
         const pdfInput = document.getElementById(`ch${chNum}-pdf`);
@@ -237,15 +247,16 @@ document.addEventListener("DOMContentLoaded", function () {
 
                 console.log(`📊 Rendering ${quizQuestions.length} questions...`);
 
-                // Check if render function exists
-                if (typeof renderCleanQuizPreview !== 'function') {
-                    console.error('❌ renderCleanQuizPreview function is not defined!');
-                    alert('Error: renderCleanQuizPreview function not loaded. Please check script loading order.');
+                if (typeof renderGoogleFormQuiz === "function") {
+                    renderGoogleFormQuiz(quizQuestions, previewBox, chNum);
+                } else if (typeof renderCleanQuizPreview === "function") {
+                    renderCleanQuizPreview(quizQuestions, previewBox);
+                } else {
+                    console.error("❌ No quiz preview renderer loaded (renderGoogleFormQuiz / renderCleanQuizPreview).");
+                    alert("Error: quiz preview scripts not loaded. Please check script loading order.");
                     return;
                 }
 
-                // Render the quiz preview
-                renderCleanQuizPreview(quizQuestions, previewBox);
                 previewBox.style.display = "block";
                 previewBox.classList.add("active");
 
@@ -275,35 +286,42 @@ document.addEventListener("DOMContentLoaded", function () {
                     if (confirmBtn) {
                         console.log("✅ Confirm button found, adding event listener...");
                         confirmBtn.addEventListener("click", function () {
-                            console.log(`🔒 Confirm button clicked for Chapter ${chNum}`);
-                            
-                            const questionElements = previewBox.querySelectorAll(".single-question-item");
-                            let finalQuestionsArray = [];
-                            let validationPassed = true;
+                            console.log(`🔒 Save & Confirm clicked for Chapter ${chNum}`);
 
+                            const questionElements = previewBox.querySelectorAll(".single-question-item");
                             if (questionElements.length === 0) {
                                 alert("⚠️ No questions found to confirm!");
                                 return;
                             }
 
-                            questionElements.forEach((el, index) => {
-                                const ans = el.querySelector(".edit-correct").value.toUpperCase().trim();
-                                
-                                if (!["A", "B", "C", "D"].includes(ans)) {
-                                    alert(`⚠️ Validation Error: Question ${index + 1} - Correct answer must be A, B, C, or D. Found "${ans}" instead.`);
-                                    validationPassed = false;
-                                    return;
-                                }
+                            let finalQuestionsArray = [];
+                            let validationPassed = true;
 
-                                finalQuestionsArray.push({
-                                    Question_Text: el.querySelector(".edit-qtext").value,
-                                    Option_A: el.querySelector(".edit-optA").value,
-                                    Option_B: el.querySelector(".edit-optB").value,
-                                    Option_C: el.querySelector(".edit-optC").value,
-                                    Option_D: el.querySelector(".edit-optD").value,
-                                    Correct_Answer: ans
+                            if (typeof collectEditedQuestionsFromPreview === "function") {
+                                finalQuestionsArray = collectEditedQuestionsFromPreview(previewBox);
+                            } else {
+                                questionElements.forEach((el, index) => {
+                                    const ans = el.querySelector(".edit-correct").value.toUpperCase().trim();
+                                    if (!["A", "B", "C", "D"].includes(ans)) {
+                                        alert(`⚠️ Validation Error: Question ${index + 1} - Correct answer must be A, B, C, or D. Found "${ans}" instead.`);
+                                        validationPassed = false;
+                                        return;
+                                    }
+                                    finalQuestionsArray.push({
+                                        Question_Text: el.querySelector(".edit-qtext").value,
+                                        Option_A: el.querySelector(".edit-optA").value,
+                                        Option_B: el.querySelector(".edit-optB").value,
+                                        Option_C: el.querySelector(".edit-optC").value,
+                                        Option_D: el.querySelector(".edit-optD").value,
+                                        Correct_Answer: ans
+                                    });
                                 });
-                            });
+                            }
+
+                            if (finalQuestionsArray.length !== questionElements.length) {
+                                validationPassed = false;
+                                alert("⚠️ Each question must have a correct answer of A, B, C, or D.");
+                            }
 
                             if (!validationPassed) return;
 
@@ -333,9 +351,9 @@ document.addEventListener("DOMContentLoaded", function () {
 
                             // Disable confirm button
                             this.disabled = true;
-                            this.innerHTML = `<i class="fa-solid fa-check-circle"></i> Confirmed ✓`;
+                            this.innerHTML = `<i class="fa-solid fa-check-circle"></i> Saved & Confirmed ✓`;
 
-                            alert(`✅ Chapter ${chNum} Quiz confirmed with ${finalQuestionsArray.length} questions!`);
+                            alert(`✅ Chapter ${chNum} quiz saved & confirmed with ${finalQuestionsArray.length} questions!`);
                         });
                     } else {
                         console.warn(`⚠️ Confirm button not found for Chapter ${chNum}`);
@@ -390,21 +408,21 @@ document.addEventListener("DOMContentLoaded", function () {
                         Chapter_Title: document.getElementById("ch1-title").value,
                         Video_Link_Or_Path: document.getElementById("ch1-video").value,
                         PDF_Link_Or_Path: chapterQuizzesState[1].realPdfPath || "uploads/pdfs/default.pdf",
-                        quiz: chapterQuizzesState[1].data
+                        quiz: buildChapterQuizPayload(chapterQuizzesState[1])
                     },
                     {
                         Chapter_Number: 2,
                         Chapter_Title: document.getElementById("ch2-title").value,
                         Video_Link_Or_Path: document.getElementById("ch2-video").value,
                         PDF_Link_Or_Path: chapterQuizzesState[2].realPdfPath || "uploads/pdfs/default.pdf",
-                        quiz: chapterQuizzesState[2].data
+                        quiz: buildChapterQuizPayload(chapterQuizzesState[2])
                     },
                     {
                         Chapter_Number: 3,
                         Chapter_Title: document.getElementById("ch3-title").value,
                         Video_Link_Or_Path: document.getElementById("ch3-video").value,
                         PDF_Link_Or_Path: chapterQuizzesState[3].realPdfPath || "uploads/pdfs/default.pdf",
-                        quiz: chapterQuizzesState[3].data
+                        quiz: buildChapterQuizPayload(chapterQuizzesState[3])
                     }
                 ]
             };

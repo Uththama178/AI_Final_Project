@@ -1,102 +1,88 @@
-/**
- * Renders the clean quiz editor interface inside the respective chapter preview panel.
- * Asynchronously fetches the component template and injects dynamic questions.
- * 
- * @param {Array} backendQuestions - Array of question objects from your NLP model.
- * @param {HTMLElement} containerTarget - The DOM element where the preview HTML should build (e.g., previewBox).
- */
-async function renderCleanQuizPreview(backendQuestions, containerTarget) {
-    if (!backendQuestions || !Array.isArray(backendQuestions)) {
-        console.error("Invalid array format for quiz questions.");
-        return;
+<!-- Google Forms–style quiz preview shell (reference template for chapter MCQ editor) -->
+<div class="google-form-quiz-shell" data-component="quiz-preview">
+    <div class="google-form-quiz-header">
+        <div class="google-form-quiz-header-bar"></div>
+        <div class="google-form-quiz-header-body">
+            <h3 class="google-form-quiz-title">Chapter Quiz Preview</h3>
+            <p class="google-form-quiz-subtitle">Review and edit each question before saving.</p>
+        </div>
+    </div>
+    <div id="dynamic-questions-container" class="google-form-questions-list"></div>
+    <div class="google-form-quiz-footer">
+        <button type="button" class="btn-save-confirm-google-quiz btn-confirm-chapter-quiz btn-lock-quiz">
+            <i class="fa-solid fa-check-double"></i> Save &amp; Confirm Chapter Quiz
+        </button>
+        <p class="google-form-quiz-footer-hint">
+            <i class="fa-solid fa-info-circle"></i> Edits are stored when you confirm this chapter.
+        </p>
+    </div>
+</div>
+
+<style>
+    .google-form-quiz-shell {
+        font-family: 'Poppins', 'Google Sans', Roboto, Arial, sans-serif;
+        max-width: 100%;
     }
-
-    try {
-        // 1. 📄 ඔයා වෙනම හදපු HTML Component එක (Layout එක) Fetch කරගන්නවා
-        const response = await fetch('quiz_preview_component.html');
-        if (!response.ok) {
-            throw new Error(`Failed to load quiz template component: ${response.statusText}`);
-        }
-        let templateWrapperHTML = await response.text();
-
-        // Limit to a maximum of 10 questions to maintain structure
-        const questionsToRender = backendQuestions.slice(0, 10);
-        let questionsListHtml = "";
-
-        // 2. 🔁 හැම ප්‍රශ්නයකටම අදාළව Dynamic Editable Cards ටික සාදාගන්නවා
-        questionsToRender.forEach((q, index) => {
-            const questionText = q.Question_Text || q.question_text || "";
-            const optA = q.Option_A || q.option_a || "";
-            const optB = q.Option_B || q.option_b || "";
-            const optC = q.Option_C || q.option_c || "";
-            const optD = q.Option_D || q.option_d || "";
-            const correctAnswer = (q.Correct_Answer || q.correct_answer || "A").toUpperCase().trim();
-
-            questionsListHtml += `
-                <div class="question-card-item single-question-item" data-index="${index}" style="background-color: #FFFFFF; border: 1px solid #B3CFE5; border-radius: 8px; padding: 20px; margin-bottom: 20px; transition: border-color 0.3s ease;">
-                    
-                    <!-- Card Header Info -->
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                        <span style="font-weight: 700; color: #0A1931; font-size: 14px; text-transform: uppercase; background: #B3CFE5; padding: 3px 10px; border-radius: 4px;">Question 0${index + 1}</span>
-                        <span style="color: #4A7FA7; font-size: 12px;"><i class="fa-solid fa-pen-to-square"></i> Editable Field</span>
-                    </div>
-
-                    <!-- Main Input Question Field -->
-                    <div style="margin-bottom: 15px;">
-                        <label style="display: block; font-size: 13px; font-weight: 600; color: #1A3D63; margin-bottom: 6px;">Question Prompt Text</label>
-                        <textarea class="edit-qtext" style="width: 100%; border: 1px solid #B3CFE5; border-radius: 6px; padding: 10px; font-size: 14px; color: #0A1931; font-family: inherit; resize: vertical; box-sizing: border-box;" rows="2">${questionText}</textarea>
-                    </div>
-
-                    <!-- MCQ Options Fields Grid Structure (2x2 Display) -->
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 15px;">
-                        <div>
-                            <label style="font-size: 12px; font-weight: 600; color: #4A7FA7;">Option A</label>
-                            <input type="text" class="edit-optA" value="${optA}" style="width: 100%; border: 1px solid #B3CFE5; border-radius: 6px; padding: 8px 10px; box-sizing: border-box; font-size: 13px; color: #0A1931;">
-                        </div>
-                        <div>
-                            <label style="font-size: 12px; font-weight: 600; color: #4A7FA7;">Option B</label>
-                            <input type="text" class="edit-optB" value="${optB}" style="width: 100%; border: 1px solid #B3CFE5; border-radius: 6px; padding: 8px 10px; box-sizing: border-box; font-size: 13px; color: #0A1931;">
-                        </div>
-                        <div>
-                            <label style="font-size: 12px; font-weight: 600; color: #4A7FA7;">Option C</label>
-                            <input type="text" class="edit-optC" value="${optC}" style="width: 100%; border: 1px solid #B3CFE5; border-radius: 6px; padding: 8px 10px; box-sizing: border-box; font-size: 13px; color: #0A1931;">
-                        </div>
-                        <div>
-                            <label style="font-size: 12px; font-weight: 600; color: #4A7FA7;">Option D</label>
-                            <input type="text" class="edit-optD" value="${optD}" style="width: 100%; border: 1px solid #B3CFE5; border-radius: 6px; padding: 8px 10px; box-sizing: border-box; font-size: 13px; color: #0A1931;">
-                        </div>
-                    </div>
-
-                    <!-- Correct Target Answer Selector -->
-                    <div style="background-color: #F6FAFD; padding: 10px 15px; border-radius: 6px; display: flex; align-items: center; justify-content: space-between; border-left: 4px solid #1A3D63;">
-                        <label style="font-size: 13px; font-weight: 600; color: #1A3D63;">Set Designated Correct Key Answer:</label>
-                        <select class="edit-correct" style="padding: 5px 12px; border: 1px solid #B3CFE5; border-radius: 4px; background-color: #FFFFFF; color: #0A1931; font-weight: bold; cursor: pointer;">
-                            <option value="A" ${correctAnswer === "A" ? "selected" : ""}>Option A</option>
-                            <option value="B" ${correctAnswer === "B" ? "selected" : ""}>Option B</option>
-                            <option value="C" ${correctAnswer === "C" ? "selected" : ""}>Option C</option>
-                            <option value="D" ${correctAnswer === "D" ? "selected" : ""}>Option D</option>
-                        </select>
-                    </div>
-                </div>
-            `;
-        });
-
-        // 3. 🧩 මුලින්ම ප්‍රධාන Layout එක containerTarget (previewBox) එකට ඇතුළත් කරනවා
-        containerTarget.innerHTML = templateWrapperHTML;
-
-        // 4. 🎯 ඉන්පසු Layout එක ඇතුළේ තියෙන නිවැරදි Placeholder Container එක අල්ලලා ප්‍රශ්න ටික ඒකට Inject කරනවා
-        const dynamicContainer = containerTarget.querySelector("#dynamic-questions-container");
-        if (dynamicContainer) {
-            dynamicContainer.innerHTML = questionsListHtml;
-        }
-
-        // 5. 🔗 වැදගත්: ඔයාගේ ප්‍රධාන JS එකේ තියෙන "btn-confirm-chapter-quiz" ක්ලාස් එක ඔයාගේ අලුත් HTML එකේ බටන් එකටත් සම්බන්ධ කරනවා
-        const lockBtn = containerTarget.querySelector(".btn-lock-quiz");
-        if (lockBtn) {
-            lockBtn.classList.add("btn-confirm-chapter-quiz");
-        }
-
-    } catch (error) {
-        console.error("Error building the HTML component inside quiz_preview_render.js:", error);
+    .google-form-quiz-header-bar {
+        height: 10px;
+        background: linear-gradient(90deg, #673ab7 0%, #1a73e8 50%, #009688 100%);
+        border-radius: 8px 8px 0 0;
     }
-}
+    .google-form-quiz-header-body {
+        background: #fff;
+        border: 1px solid #dadce0;
+        border-top: none;
+        border-radius: 0 0 8px 8px;
+        padding: 24px 24px 16px;
+        margin-bottom: 16px;
+        box-shadow: 0 1px 2px rgba(60, 64, 67, 0.15);
+    }
+    .google-form-quiz-title {
+        margin: 0 0 8px;
+        font-size: 1.35rem;
+        font-weight: 500;
+        color: #202124;
+    }
+    .google-form-quiz-subtitle {
+        margin: 0;
+        font-size: 14px;
+        color: #5f6368;
+    }
+    .google-form-questions-list {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+    .google-form-quiz-footer {
+        text-align: center;
+        margin-top: 20px;
+        padding: 20px 16px;
+        background: #f8f9fa;
+        border-radius: 8px;
+        border: 1px solid #e8eaed;
+    }
+    .btn-save-confirm-google-quiz {
+        background: #1a73e8;
+        color: #fff;
+        border: none;
+        padding: 12px 28px;
+        font-size: 14px;
+        font-weight: 600;
+        border-radius: 4px;
+        cursor: pointer;
+        box-shadow: 0 1px 2px rgba(26, 115, 232, 0.4);
+    }
+    .btn-save-confirm-google-quiz:hover {
+        background: #1765cc;
+    }
+    .btn-save-confirm-google-quiz:disabled {
+        background: #9aa0a6;
+        cursor: not-allowed;
+        box-shadow: none;
+    }
+    .google-form-quiz-footer-hint {
+        font-size: 12px;
+        color: #80868b;
+        margin: 10px 0 0;
+    }
+</style>

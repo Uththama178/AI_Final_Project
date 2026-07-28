@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, EmailStr, Field
 from typing import Optional, Literal, List
 
 
@@ -48,7 +48,12 @@ class QuestionCreate(BaseModel):
 
 # 2. Quiz එකක් සේව් කරන්න එන දත්ත
 class QuizCreate(BaseModel):
-    Quiz_Title: str
+    model_config = ConfigDict(populate_by_name=True)
+
+    Quiz_Title: str = Field(
+        ...,
+        validation_alias=AliasChoices("quiz_title", "Quiz_Title"),
+    )
     questions: List[QuestionCreate]
 
 # 3. Chapter එකක් සේව් කරන්න එන දත්ත

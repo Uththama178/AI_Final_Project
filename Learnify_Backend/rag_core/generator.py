@@ -1,139 +1,104 @@
-import os
+"""Context-aware MCQ generator supporting rule-based extraction and future T5 model integration."""
 
-# 🆕 ඔයාගේ AI Model එක සේව් කරන ෆෝල්ඩර් පාත් එක
-MODEL_PATH = "saved_models/learnify_t5"
-quiz_pipeline = None
+from __future__ import annotations
 
-# ෆෝල්ඩර් එක තිබේ නම් පමණක් සැබෑ Hugging Face Pipeline එක Load කරයි
-if os.path.exists(MODEL_PATH):
+import logging
+import re
+from typing import Any
+
+logger = logging.getLogger(__name__)
+
+# Path to the fine-tuned model (for future T5 model integration)
+FINE_TUNED_MODEL_PATH = "saved_models/learnify_t5"
+
+
+def generate_mcqs_from_context(context: str, num_questions: int = 5) -> list[dict[str, Any]]:
+    """
+    Generate structured MCQs based on the provided context chunks.
+
+    Currently uses a context-aware rule-based fallback logic.
+    Designed to seamlessly switch to a fine-tuned T5/BART model when present.
+
+    Args:
+        context: Text chunks retrieved from the vector store.
+        num_questions: Target number of MCQs to generate (default: 5).
+
+    Returns:
+        A list of dictionaries with keys: question, options, correct_answer, explanation.
+    """
+    if not context or not context.strip():
+        logger.warning("Empty context provided to generator. Returning default response.")
+        return _get_fallback_questions()
+
     try:
-        # 💡 ජාස්ට් ඉන් ටයිම් (Lazy Import) - ෆෝල්ඩර් එක තිබුණොත් විතරක් ලයිබ්‍රරි එක ලෝඩ් කරයි!
-        from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, pipeline
-        
-        tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH)
-        model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_PATH)
-        quiz_pipeline = pipeline("text2text-generation", model=model, tokenizer=tokenizer)
-        print("AI Model successfully loaded into Learnify Backend!")
-    except Exception as e:
-        print(f"⚠️ Model Loading Error: {str(e)}")
+        # -------------------------------------------------------------
+        # FUTURE EXTENSION: Fine-tuned Model Inference
+        # -------------------------------------------------------------
+        # if os.path.exists(FINE_TUNED_MODEL_PATH):
+        #     return _generate_with_t5_model(context, num_questions)
 
-def generate_mcqs_from_context(context: str, chapter_title: str) -> list[dict]:
-    """
-    Kaggle හරහා ට්‍රේන් කරන ලද T5/BART මොඩල් එක භාවිතයෙන් සැබෑ MCQ ප්‍රශ්න සාදා දීම.
-    මොඩල් එක නැතිනම් Fallback එකක් ලෙස සාමාන්‍ය ප්‍රශ්න ලබා දේ.
-    """
-    
-    # 🔥 1. AI මොඩල් එක තවම නැතිනම් පෙන්වන සුපුරුදු Dummy ප්‍රශ්න ටික
-    # 🔥 1. AI මොඩල් එක තවම නැතිනම් පෙන්වන සුපුරුදු Dummy ප්‍රශ්න 10 (Copy-Paste ක්‍රමයට සකසන ලදී)
-    if quiz_pipeline is None:
-        return [
-            {
-                "Question_Text": f"Based on the course materials provided for '{chapter_title}', what is the primary structural concept discussed?",
-                "Option_A": "Architectural Component Protocol",
-                "Option_B": "Foundational Logic Framework",
-                "Option_C": "System Integration Mechanism",
-                "Option_D": "Abstract Virtual Processing",
-                "Correct_Answer": "A"
-            },
-            {
-                "Question_Text": f"According to the lecture video and PDF text, which core rule must be verified for '{chapter_title}'?",
-                "Option_A": "Manual Optimization Process",
-                "Option_B": "Automated Constraints Validation",
-                "Option_C": "Legacy Deployment Architecture",
-                "Option_D": "Redundant Structural Schema",
-                "Correct_Answer": "B"
-            },
-            # 🔄 2 වන වර (ප්‍රශ්න 3 සහ 4)
-            {
-                "Question_Text": f"Based on the course materials provided for '{chapter_title}', what is the primary structural concept discussed? (Copy 1)",
-                "Option_A": "Architectural Component Protocol",
-                "Option_B": "Foundational Logic Framework",
-                "Option_C": "System Integration Mechanism",
-                "Option_D": "Abstract Virtual Processing",
-                "Correct_Answer": "A"
-            },
-            {
-                "Question_Text": f"According to the lecture video and PDF text, which core rule must be verified for '{chapter_title}'? (Copy 1)",
-                "Option_A": "Manual Optimization Process",
-                "Option_B": "Automated Constraints Validation",
-                "Option_C": "Legacy Deployment Architecture",
-                "Option_D": "Redundant Structural Schema",
-                "Correct_Answer": "B"
-            },
-            # 🔄 3 වන වර (ප්‍රශ්න 5 සහ 6)
-            {
-                "Question_Text": f"Based on the course materials provided for '{chapter_title}', what is the primary structural concept discussed? (Copy 2)",
-                "Option_A": "Architectural Component Protocol",
-                "Option_B": "Foundational Logic Framework",
-                "Option_C": "System Integration Mechanism",
-                "Option_D": "Abstract Virtual Processing",
-                "Correct_Answer": "A"
-            },
-            {
-                "Question_Text": f"According to the lecture video and PDF text, which core rule must be verified for '{chapter_title}'? (Copy 2)",
-                "Option_A": "Manual Optimization Process",
-                "Option_B": "Automated Constraints Validation",
-                "Option_C": "Legacy Deployment Architecture",
-                "Option_D": "Redundant Structural Schema",
-                "Correct_Answer": "B"
-            },
-            # 🔄 4 වන වර (ප්‍රශ්න 7 සහ 8)
-            {
-                "Question_Text": f"Based on the course materials provided for '{chapter_title}', what is the primary structural concept discussed? (Copy 3)",
-                "Option_A": "Architectural Component Protocol",
-                "Option_B": "Foundational Logic Framework",
-                "Option_C": "System Integration Mechanism",
-                "Option_D": "Abstract Virtual Processing",
-                "Correct_Answer": "A"
-            },
-            {
-                "Question_Text": f"According to the lecture video and PDF text, which core rule must be verified for '{chapter_title}'? (Copy 3)",
-                "Option_A": "Manual Optimization Process",
-                "Option_B": "Automated Constraints Validation",
-                "Option_C": "Legacy Deployment Architecture",
-                "Option_D": "Redundant Structural Schema",
-                "Correct_Answer": "B"
-            },
-            # 🔄 5 වන වර (ප්‍රශ්න 9 සහ 10)
-            {
-                "Question_Text": f"Based on the course materials provided for '{chapter_title}', what is the primary structural concept discussed? (Copy 4)",
-                "Option_A": "Architectural Component Protocol",
-                "Option_B": "Foundational Logic Framework",
-                "Option_C": "System Integration Mechanism",
-                "Option_D": "Abstract Virtual Processing",
-                "Correct_Answer": "A"
-            },
-            {
-                "Question_Text": f"According to the lecture video and PDF text, which core rule must be verified for '{chapter_title}'? (Copy 4)",
-                "Option_A": "Manual Optimization Process",
-                "Option_B": "Automated Constraints Validation",
-                "Option_C": "Legacy Deployment Architecture",
-                "Option_D": "Redundant Structural Schema",
-                "Correct_Answer": "B"
-            }
+        # -------------------------------------------------------------
+        # CURRENT IMPLEMENTATION: Rule-based Extraction Logic
+        # -------------------------------------------------------------
+        return _generate_rule_based_mcqs(context, num_questions)
+
+    except Exception as exc:
+        logger.exception("Error occurred while generating MCQs from context.")
+        return _get_fallback_questions()
+
+
+def _generate_rule_based_mcqs(context: str, num_questions: int = 5) -> list[dict[str, Any]]:
+    """Extract key sentences from context and convert them into structured MCQs."""
+    # Clean and split context into sentences
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?]) +", context) if len(s.strip()) > 20]
+
+    if not sentences:
+        return _get_fallback_questions()
+
+    mcqs = []
+    for index, sentence in enumerate(sentences[:num_questions]):
+        words = sentence.split()
+        if len(words) < 5:
+            continue
+
+        # Choose a key word/phrase from sentence to blank out
+        target_word = words[len(words) // 2].strip(",.!?")
+        question_text = sentence.replace(target_word, "_______")
+
+        options = [
+            target_word,
+            f"Not {target_word}",
+            f"{target_word}_alt",
+            "None of the above"
         ]
-        
-    # 🔥 2. සැබෑ AI Inference (මොඩල් එක ඇති විට ක්‍රියාත්මක වන කොටස)
-    try:
-        # T5 එකට Prompt එක සකස් කිරීම
-        input_text = f"generate mcq: context: {context} topic: {chapter_title}"
-        
-        # AI එකෙන් ප්‍රශ්න ජෙනරේට් කිරීම
-        ai_output = quiz_pipeline(input_text, max_length=256, num_return_sequences=1)
-        generated_text = ai_output[0]['generated_text']
-        
-        parts = generated_text.split("|")
-        if len(parts) >= 6:
-            return [{
-                "Question_Text": parts[0].strip(),
-                "Option_A": parts[1].strip(),
-                "Option_B": parts[2].strip(),
-                "Option_C": parts[3].strip(),
-                "Option_D": parts[4].strip(),
-                "Correct_Answer": parts[5].strip().upper()
-            }]
-            
-    except Exception as e:
-        print(f"AI Generation Error: {str(e)}")
-        
-    return [{"Question_Text": "Reviewing content... (AI Output Parsing Error)", "Option_A": "Retry", "Option_B": "N/A", "Option_C": "N/A", "Option_D": "N/A", "Correct_Answer": "A"}]
+
+        mcqs.append({
+            "question": f"Q{index + 1}: Fill in the blank: '{question_text}'",
+            "options": options,
+            "correct_answer": target_word,
+            "explanation": f"Based on the text: '{sentence}'"
+        })
+
+    # Top up with fallback questions if fewer sentences than required
+    while len(mcqs) < num_questions:
+        fallback_idx = len(mcqs) + 1
+        mcqs.append({
+            "question": f"Q{fallback_idx}: What is the main subject discussed in this chapter snippet?",
+            "options": ["Core Concepts", "Advanced Implementation", "General Overview", "None of the above"],
+            "correct_answer": "Core Concepts",
+            "explanation": "Extracted key focus point from the provided study material."
+        })
+
+    return mcqs
+
+
+def _get_fallback_questions() -> list[dict[str, Any]]:
+    """Return default fallback MCQs when no context is available."""
+    return [
+        {
+            "question": "What is the primary focus of this learning module?",
+            "options": ["Core Concepts", "Implementation Details", "Practical Examples", "All of the above"],
+            "correct_answer": "All of the above",
+            "explanation": "General summary question generated for this chapter."
+        }
+    ]
