@@ -293,7 +293,7 @@
                             <p>Provide course information, upload content for all 3 chapters, generate/approve individual AI quizzes, and launch your course module.</p>
                         </div>
                         
-                        <form id="course-upload-form" class="dashboard-form">
+                        <form id="course-upload-form" class="dashboard-form" onsubmit="event.preventDefault(); return false;">
                             <div class="form-group">
                                 <label for="course-title">Course Title <span class="required">*</span></label>
                                 <input type="text" id="course-title" placeholder="e.g., Introduction to Java OOP" required>

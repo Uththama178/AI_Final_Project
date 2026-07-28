@@ -128,16 +128,21 @@ document.addEventListener("DOMContentLoaded", function () {
         btn.addEventListener('click', async function (e) {
             e.preventDefault();
             e.stopPropagation();
+
+            const generateBtn = this;
+            const originalBtnText = generateBtn.innerHTML;
+            generateBtn.disabled = true;
+            generateBtn.innerHTML = `⏳ Generating Quiz... Please wait`;
             
             // Block form submission
-            if (this.form) {
-                this.form.onsubmit = function(event) { 
+            if (generateBtn.form) {
+                generateBtn.form.onsubmit = function(event) { 
                     event.preventDefault(); 
                     return false; 
                 };
             }
 
-            const chNum = parseInt(this.getAttribute("data-chap"), 10);
+            const chNum = parseInt(generateBtn.getAttribute("data-chap"), 10);
             console.log(`🚀 Generating quiz for Chapter ${chNum}...`);
 
             // Get form values
@@ -152,14 +157,12 @@ document.addEventListener("DOMContentLoaded", function () {
             // Validate
             if (!finalChTitle || !chVideoUrl || !chPdf) {
                 alert(`⚠️ Please insert Chapter ${chNum} Title, YouTube Video Link, and PDF before generating!`);
+                generateBtn.innerHTML = originalBtnText;
+                generateBtn.disabled = false;
                 return;
             }
 
             console.log(`📝 Chapter ${chNum}:`, { title: finalChTitle, video: chVideoUrl, pdf: chPdf.name });
-
-            const originalBtnText = this.innerHTML;
-            this.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Generating via AI...`;
-            this.disabled = true;
 
             const formData = new FormData();
             formData.append("chapter_title", finalChTitle);
@@ -366,8 +369,8 @@ document.addEventListener("DOMContentLoaded", function () {
                 console.error(`🔴 Error generating quiz for Chapter ${chNum}:`, error);
                 alert(`❌ Error: ${error.message}`);
             } finally {
-                this.innerHTML = originalBtnText;
-                this.disabled = false;
+                generateBtn.innerHTML = originalBtnText;
+                generateBtn.disabled = false;
                 console.log(`✅ Chapter ${chNum} process completed`);
             }
         });
