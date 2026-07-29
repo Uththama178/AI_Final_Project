@@ -2,6 +2,8 @@
     "python-envs.defaultEnvManager": "ms-python.python:system",
     "liveServer.settings.ignoreFiles": [
       "**/uploads/**",
-      "**/chroma_db/**"
+      "**/chroma_db/**",
+      "**/latest_rag_source_data.json",
+      "**/*.json"
     ]
-  }
+}
