@@ -1,8 +1,10 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional, AsyncGenerator
 from contextlib import asynccontextmanager
+import os
 
 from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi.staticfiles import StaticFiles
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 from fastapi.middleware.cors import CORSMiddleware 
@@ -46,6 +48,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Serve uploaded PDFs/videos publicly at /uploads/...
+os.makedirs("uploads", exist_ok=True)
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 SECRET_KEY = "learnify-secret-key-change-me"
 ALGORITHM = "HS256"

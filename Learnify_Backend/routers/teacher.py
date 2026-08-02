@@ -222,3 +222,147 @@ def create_entire_course(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"කෝස් එක සේව් කිරීම අසාර්ථකයි! දත්ත රෝල්බැක් කරන ලදී. Error: {str(e)}"
         )
+
+
+# ====================================================================================
+# 📚 Endpoint 3: Fetch Logged-in Teacher's Courses (My Courses Tab)
+# ====================================================================================
+@router.get("/my-courses", response_model=list[schema.CourseSummaryResponse])
+def get_my_courses(
+    db: Session = Depends(get_db),
+    current_user: models.AppUser = Depends(get_current_user)
+):
+    """
+    ලොග් වී සිටින ටීචර් විසින් සාදන ලද සියලුම කෝස් ලැයිස්තුව ලබා දෙයි.
+    """
+    teacher_profile = db.query(models.Teacher).filter(models.Teacher.User_ID == current_user.User_ID).first()
+    if not teacher_profile:
+        raise HTTPException(status_code=404, detail="ටීචර් ප්‍රොෆයිල් එකක් හමු වුණේ නැත.")
+
+    courses = db.query(models.Course).filter(models.Course.Teacher_ID == teacher_profile.Teacher_ID).all()
+
+    return [
+        schema.CourseSummaryResponse(
+            Course_ID=course.Course_ID,
+            Title=course.Title,
+            Description=course.Description,
+            Price=course.Price,
+            chapter_count=len(course.chapters)
+        )
+        for course in courses
+    ]
+
+
+# ====================================================================================
+# 📖 Endpoint 4: Fetch Full Course Details (chapters, media, quizzes, questions)
+# ====================================================================================
+@router.get("/course-details/{course_id}", response_model=schema.CourseDetailResponse)
+def get_course_details(
+    course_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.AppUser = Depends(get_current_user)
+):
+    """
+    ලොග් වී සිටින ටීචර්ගේ තෝරාගත් කෝස් එකේ සම්පූර්ණ විස්තර
+    (chapters, video/PDF links, quizzes, questions) ලබා දෙයි.
+    """
+    teacher_profile = db.query(models.Teacher).filter(models.Teacher.User_ID == current_user.User_ID).first()
+    if not teacher_profile:
+        raise HTTPException(status_code=404, detail="ටීචර් ප්‍රොෆයිල් එකක් හමු වුණේ නැත.")
+
+    course = db.query(models.Course).filter(
+        models.Course.Course_ID == course_id,
+        models.Course.Teacher_ID == teacher_profile.Teacher_ID
+    ).first()
+    if not course:
+        raise HTTPException(status_code=404, detail="කෝස් එක හමු වුණේ නැත හෝ ඔබට අයිතියක් නැත.")
+
+    chapters_payload = []
+    for chapter in sorted(course.chapters, key=lambda c: c.Chapter_Number or 0):
+        quiz_payload = None
+        if chapter.quiz:
+            quiz_payload = schema.QuizDetailResponse(
+                Quiz_ID=chapter.quiz.Quiz_ID,
+                Quiz_Title=chapter.quiz.Quiz_Title,
+                questions=[
+                    schema.QuestionDetailResponse(
+                        Question_ID=q.Question_ID,
+                        Question_Text=q.Question_Text,
+                        Option_A=q.Option_A,
+                        Option_B=q.Option_B,
+                        Option_C=q.Option_C,
+                        Option_D=q.Option_D,
+                        Correct_Answer=q.Correct_Answer,
+                    )
+                    for q in (chapter.quiz.questions or [])
+                ],
+            )
+
+        chapters_payload.append(
+            schema.ChapterDetailResponse(
+                Chapter_ID=chapter.Chapter_ID,
+                Chapter_Number=chapter.Chapter_Number,
+                Chapter_Title=chapter.Chapter_Title,
+                Video_Link_Or_Path=chapter.Video_Link_Or_Path,
+                PDF_Link_Or_Path=chapter.PDF_Link_Or_Path,
+                quiz=quiz_payload,
+            )
+        )
+
+    return schema.CourseDetailResponse(
+        Course_ID=course.Course_ID,
+        Title=course.Title,
+        Description=course.Description,
+        Price=course.Price,
+        chapters=chapters_payload,
+    )
+
+
+# ====================================================================================
+# ✏️ Endpoint 5: Update Course Title / Description / Price Only
+# ====================================================================================
+@router.put("/update-course/{course_id}", response_model=schema.CourseSummaryResponse)
+def update_course(
+    course_id: int,
+    payload: schema.CourseUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: models.AppUser = Depends(get_current_user)
+):
+    """
+    කෝස් එකේ Title, Description, Price පමණක් යාවත්කාලීන කරයි.
+    Chapters සහ Quiz Questions නොවෙනස්ව තබයි.
+    """
+    if current_user.Role.lower() not in ["teacher", "both"]:
+        raise HTTPException(status_code=403, detail="මෙම ක්‍රියාව සිදු කිරීමට ඔබට අවසර නැත. ටීචර් කෙනෙකු ලෙස ලොග් වන්න.")
+
+    teacher_profile = db.query(models.Teacher).filter(models.Teacher.User_ID == current_user.User_ID).first()
+    if not teacher_profile:
+        raise HTTPException(status_code=404, detail="ටීචර් ප්‍රොෆයිල් එකක් හමු වුණේ නැත.")
+
+    course = db.query(models.Course).filter(
+        models.Course.Course_ID == course_id,
+        models.Course.Teacher_ID == teacher_profile.Teacher_ID
+    ).first()
+    if not course:
+        raise HTTPException(status_code=404, detail="කෝස් එක හමු වුණේ නැත හෝ ඔබට අයිතියක් නැත.")
+
+    if payload.Price is not None and payload.Price < 0:
+        raise HTTPException(status_code=400, detail="කෝස් එකේ මිල සෘණ අගයක් විය නොහැක.")
+
+    if payload.Title is not None:
+        course.Title = payload.Title
+    if payload.Description is not None:
+        course.Description = payload.Description
+    if payload.Price is not None:
+        course.Price = payload.Price
+
+    db.commit()
+    db.refresh(course)
+
+    return schema.CourseSummaryResponse(
+        Course_ID=course.Course_ID,
+        Title=course.Title,
+        Description=course.Description,
+        Price=course.Price,
+        chapter_count=len(course.chapters),
+    )

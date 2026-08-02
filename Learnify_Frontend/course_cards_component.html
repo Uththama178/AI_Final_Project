@@ -1,0 +1,98 @@
+<!-- Learnify Teacher Course Cards — Modal & Template Fragments (loaded dynamically) -->
+
+<!-- Course Edit Modal (Title / Description / Price ONLY) -->
+<div id="tc-edit-course-modal" class="tc-modal-overlay" aria-hidden="true">
+    <div class="tc-modal" role="dialog" aria-labelledby="tc-edit-modal-title">
+        <div class="tc-modal-header">
+            <h3 id="tc-edit-modal-title"><i class="fa-solid fa-pen-to-square"></i> Edit Course Info</h3>
+            <button type="button" class="tc-modal-close" data-tc-close="edit" aria-label="Close">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+        <form id="tc-edit-course-form">
+            <div class="tc-modal-body">
+                <p class="tc-locked-hint">
+                    <i class="fa-solid fa-lock"></i>
+                    Chapters, videos, PDFs, and quizzes stay locked. Only basic info can be changed.
+                </p>
+                <input type="hidden" id="tc-edit-course-id" value="">
+                <div class="tc-form-group">
+                    <label for="tc-edit-title">Course Title</label>
+                    <input type="text" id="tc-edit-title" name="Title" required maxlength="150" placeholder="Enter course title">
+                </div>
+                <div class="tc-form-group">
+                    <label for="tc-edit-description">Description</label>
+                    <textarea id="tc-edit-description" name="Description" rows="4" placeholder="Enter course description"></textarea>
+                </div>
+                <div class="tc-form-group">
+                    <label for="tc-edit-price">Price (LKR)</label>
+                    <input type="number" id="tc-edit-price" name="Price" min="0" step="0.01" required placeholder="0.00">
+                </div>
+            </div>
+            <div class="tc-modal-footer">
+                <button type="button" class="tc-btn tc-btn-secondary" data-tc-close="edit">Cancel</button>
+                <button type="submit" class="tc-btn tc-btn-primary" id="tc-edit-save-btn">
+                    <i class="fa-solid fa-floppy-disk"></i> Save Changes
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Video Player Modal -->
+<div id="tc-video-modal" class="tc-modal-overlay" aria-hidden="true">
+    <div class="tc-modal tc-modal-wide" role="dialog" aria-labelledby="tc-video-modal-title">
+        <div class="tc-modal-header">
+            <h3 id="tc-video-modal-title"><i class="fa-solid fa-circle-play"></i> Lecture Preview</h3>
+            <button type="button" class="tc-modal-close" data-tc-close="video" aria-label="Close">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+        <div class="tc-modal-body">
+            <div class="tc-video-frame-wrap" id="tc-video-player-container"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Hidden reusable templates (cloned by my_courses_render.js) -->
+<template id="tc-course-card-template">
+    <article class="tc-course-card" data-course-id="">
+        <div class="tc-course-card-accent"></div>
+        <div class="tc-course-card-body">
+            <div class="tc-course-card-top">
+                <span class="tc-chapter-count">
+                    <i class="fa-solid fa-layer-group"></i>
+                    <span class="tc-chapter-count-value">0 Chapters</span>
+                </span>
+                <span class="tc-price-badge">LKR 0.00</span>
+            </div>
+            <h4 class="tc-course-title">Course Title</h4>
+            <p class="tc-course-desc">No description provided.</p>
+            <div class="tc-card-actions">
+                <button type="button" class="tc-btn tc-btn-secondary tc-btn-edit-info">
+                    <i class="fa-solid fa-pen"></i> Edit Info
+                </button>
+                <button type="button" class="tc-btn tc-btn-primary tc-btn-view-details">
+                    <i class="fa-solid fa-chevron-down"></i> View Details
+                </button>
+            </div>
+        </div>
+        <div class="tc-details-panel" hidden></div>
+    </article>
+</template>
+
+<template id="tc-chapter-accordion-template">
+    <div class="tc-chapter-accordion" data-chapter-id="">
+        <button type="button" class="tc-chapter-header">
+            <span class="tc-chapter-header-left">
+                <span class="tc-chapter-num">1</span>
+                <span class="tc-chapter-title">Chapter Title</span>
+            </span>
+            <i class="fa-solid fa-chevron-down tc-chapter-chevron"></i>
+        </button>
+        <div class="tc-chapter-body">
+            <div class="tc-media-row"></div>
+            <div class="tc-quiz-block"></div>
+        </div>
+    </div>
+</template>

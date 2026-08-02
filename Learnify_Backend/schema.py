@@ -71,4 +71,68 @@ class CourseCreatePayload(BaseModel):
     Price: float
     chapters: List[ChapterCreate]
 
+# 5. Teacher ගේ "My Courses" ලිස්ට් එකට යවන Summary Response Schema
+class CourseSummaryResponse(BaseModel):
+    Course_ID: int
+    Title: str
+    Description: Optional[str] = None
+    Price: float
+    chapter_count: int
+
+    class Config:
+        from_attributes = True
+
+
+# 6. Course Edit Request (Title / Description / Price only)
+class CourseUpdateRequest(BaseModel):
+    Title: Optional[str] = None
+    Description: Optional[str] = None
+    Price: Optional[float] = None
+
+
+# 7. Detailed Course Card Response Schemas (nested chapters / quiz / questions)
+class QuestionDetailResponse(BaseModel):
+    Question_ID: int
+    Question_Text: str
+    Option_A: str
+    Option_B: str
+    Option_C: str
+    Option_D: str
+    Correct_Answer: str
+
+    class Config:
+        from_attributes = True
+
+
+class QuizDetailResponse(BaseModel):
+    Quiz_ID: int
+    Quiz_Title: str
+    questions: List[QuestionDetailResponse] = []
+
+    class Config:
+        from_attributes = True
+
+
+class ChapterDetailResponse(BaseModel):
+    Chapter_ID: int
+    Chapter_Number: int
+    Chapter_Title: str
+    Video_Link_Or_Path: Optional[str] = None
+    PDF_Link_Or_Path: Optional[str] = None
+    quiz: Optional[QuizDetailResponse] = None
+
+    class Config:
+        from_attributes = True
+
+
+class CourseDetailResponse(BaseModel):
+    Course_ID: int
+    Title: str
+    Description: Optional[str] = None
+    Price: float
+    chapters: List[ChapterDetailResponse] = []
+
+    class Config:
+        from_attributes = True
+
 
