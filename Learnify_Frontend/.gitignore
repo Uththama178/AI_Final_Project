@@ -1,9 +1,8 @@
-# Ignore uploaded files and PDFs
-uploads/
-uploads/pdfs/*
-!uploads/pdfs/.gitkeep
+# Ignore backend uploaded files and PDFs
+Learnify_Backend/uploads/*
+!Learnify_Backend/uploads/pdfs/.gitkeep
 
 # Ignore python cache files
-__pycache__/
+**/__pycache__/
 *.pyc
 .env
