@@ -1,6 +1,7 @@
 /**
  * Teacher "My Courses" card rendering module.
  * Loads modal/templates from course_cards_component.html (no modal HTML in dashboard).
+ * Course details + quizzes open as full-page overlays (not inline card expansion).
  */
 (function () {
     "use strict";
@@ -10,6 +11,7 @@
 
     let componentsReady = false;
     let detailsCache = {};
+    let activeCourseDetail = null;
 
     function getToken() {
         return localStorage.getItem("access_token");
@@ -44,23 +46,62 @@
 
     function toYouTubeEmbed(url) {
         if (!url) return null;
-        const raw = String(url).trim();
+        let raw = String(url).trim();
+        // Decode common HTML-entity / escaped forms from attributes
+        raw = raw
+            .replace(/&amp;/gi, "&")
+            .replace(/&#38;/g, "&")
+            .replace(/&quot;/gi, '"');
+
+        // Extract 11-char YouTube video ID from common URL shapes
         const patterns = [
-            /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/,
+            /(?:youtube\.com\/watch\?(?:[^#]*&)?v=|youtube\.com\/embed\/|youtube\.com\/shorts\/|youtu\.be\/|youtube\.com\/live\/)([a-zA-Z0-9_-]{11})/,
+            /^([a-zA-Z0-9_-]{11})$/,
         ];
         for (const re of patterns) {
             const m = raw.match(re);
-            if (m && m[1]) return `https://www.youtube.com/embed/${m[1]}?autoplay=1`;
+            if (m && m[1]) {
+                return `https://www.youtube.com/embed/${m[1]}?autoplay=1&rel=0`;
+            }
         }
         return null;
     }
 
+    function getYoutubeIframe() {
+        return document.getElementById("tc-youtube-iframe");
+    }
+
+    function clearVideoPlayer() {
+        const iframe = getYoutubeIframe();
+        const container = document.getElementById("tc-video-player-container");
+        const errEl = document.getElementById("tc-video-error");
+        if (iframe) {
+            // Clear src so playback/audio stops immediately
+            iframe.src = "about:blank";
+            iframe.removeAttribute("src");
+            iframe.src = "";
+        }
+        if (container) {
+            // Remove any leftover <video> fallback nodes, keep the iframe
+            container.querySelectorAll("video").forEach((v) => v.remove());
+        }
+        if (errEl) {
+            errEl.hidden = true;
+            errEl.textContent = "";
+        }
+    }
+
     async function ensureCourseCardComponentsLoaded() {
-        if (componentsReady && document.getElementById("tc-edit-course-modal")) {
+        if (componentsReady && document.getElementById("tc-edit-course-modal") && document.getElementById("tc-course-view-overlay")) {
             return true;
         }
 
-        if (document.getElementById("tc-edit-course-modal") && document.getElementById("tc-video-modal")) {
+        if (
+            document.getElementById("tc-edit-course-modal") &&
+            document.getElementById("tc-video-modal") &&
+            document.getElementById("tc-course-view-overlay") &&
+            document.getElementById("tc-quiz-view-overlay")
+        ) {
             componentsReady = true;
             wireModalChrome();
             return true;
@@ -72,10 +113,13 @@
                 throw new Error(`Failed to load ${COMPONENT_URL} (${response.status})`);
             }
             const html = await response.text();
-            const wrap = document.createElement("div");
-            wrap.id = "tc-course-cards-component-root";
+            let wrap = document.getElementById("tc-course-cards-component-root");
+            if (!wrap) {
+                wrap = document.createElement("div");
+                wrap.id = "tc-course-cards-component-root";
+                document.body.appendChild(wrap);
+            }
             wrap.innerHTML = html;
-            document.body.appendChild(wrap);
             componentsReady = true;
             wireModalChrome();
             return true;
@@ -87,22 +131,28 @@
 
     function wireModalChrome() {
         document.querySelectorAll("[data-tc-close]").forEach((btn) => {
+            if (btn.dataset.wiredClose) return;
+            btn.dataset.wiredClose = "1";
             btn.addEventListener("click", () => {
                 const which = btn.getAttribute("data-tc-close");
                 if (which === "edit") closeEditCourseModal();
                 if (which === "video") closeVideoModal();
+                if (which === "course-view") closeCourseView();
+                if (which === "quiz-view") closeQuizView();
             });
         });
 
         const editOverlay = document.getElementById("tc-edit-course-modal");
         const videoOverlay = document.getElementById("tc-video-modal");
 
-        if (editOverlay) {
+        if (editOverlay && !editOverlay.dataset.wiredBackdrop) {
+            editOverlay.dataset.wiredBackdrop = "1";
             editOverlay.addEventListener("click", (e) => {
                 if (e.target === editOverlay) closeEditCourseModal();
             });
         }
-        if (videoOverlay) {
+        if (videoOverlay && !videoOverlay.dataset.wiredBackdrop) {
+            videoOverlay.dataset.wiredBackdrop = "1";
             videoOverlay.addEventListener("click", (e) => {
                 if (e.target === videoOverlay) closeVideoModal();
             });
@@ -115,34 +165,65 @@
         }
     }
 
+    function lockBodyScroll(lock) {
+        document.body.style.overflow = lock ? "hidden" : "";
+    }
+
     function openVideoModal(videoUrl, title) {
         const overlay = document.getElementById("tc-video-modal");
         const container = document.getElementById("tc-video-player-container");
         const titleEl = document.getElementById("tc-video-modal-title");
+        const errEl = document.getElementById("tc-video-error");
+        let iframe = getYoutubeIframe();
         if (!overlay || !container) return;
+
+        // Ensure modal appears above full-page course/quiz overlays
+        overlay.style.zIndex = "10050";
 
         if (titleEl) {
             titleEl.innerHTML = `<i class="fa-solid fa-circle-play"></i> ${escapeHtml(title || "Lecture Preview")}`;
         }
 
-        const embed = toYouTubeEmbed(videoUrl);
-        container.innerHTML = "";
-        if (embed) {
-            const iframe = document.createElement("iframe");
-            iframe.src = embed;
-            iframe.allow =
-                "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture";
-            iframe.allowFullscreen = true;
+        // Recreate iframe if missing (after older component HTML / hard refresh edge cases)
+        if (!iframe) {
+            iframe = document.createElement("iframe");
+            iframe.id = "tc-youtube-iframe";
             iframe.title = "Lecture video";
+            iframe.allow =
+                "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";
+            iframe.allowFullscreen = true;
+            iframe.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
+            container.innerHTML = "";
             container.appendChild(iframe);
+        }
+
+        // Remove any prior non-iframe fallback players
+        container.querySelectorAll("video").forEach((v) => v.remove());
+        if (errEl) {
+            errEl.hidden = true;
+            errEl.textContent = "";
+        }
+
+        const embed = toYouTubeEmbed(videoUrl);
+        if (embed) {
+            iframe.style.display = "block";
+            iframe.src = embed;
         } else if (videoUrl) {
+            // Non-YouTube direct media fallback
+            iframe.style.display = "none";
+            iframe.src = "";
             const video = document.createElement("video");
             video.src = videoUrl;
             video.controls = true;
             video.autoplay = true;
             container.appendChild(video);
         } else {
-            container.innerHTML = `<p class="tc-details-error">No video URL available for this chapter.</p>`;
+            iframe.style.display = "none";
+            iframe.src = "";
+            if (errEl) {
+                errEl.hidden = false;
+                errEl.textContent = "No video URL available for this chapter.";
+            }
         }
 
         overlay.classList.add("open");
@@ -151,8 +232,7 @@
 
     function closeVideoModal() {
         const overlay = document.getElementById("tc-video-modal");
-        const container = document.getElementById("tc-video-player-container");
-        if (container) container.innerHTML = "";
+        clearVideoPlayer();
         if (overlay) {
             overlay.classList.remove("open");
             overlay.setAttribute("aria-hidden", "true");
@@ -244,9 +324,7 @@
             return `<p class="tc-details-loading"><i class="fa-solid fa-circle-info"></i> No quiz questions for this chapter.</p>`;
         }
 
-        const title = escapeHtml(quiz.Quiz_Title || "Chapter Quiz");
-        let html = `<h5><i class="fa-solid fa-list-check"></i> ${title} <span style="font-weight:500;color:rgba(10,25,49,0.5);">(Preview Mode)</span></h5>`;
-
+        let html = "";
         quiz.questions.forEach((q, index) => {
             const qid = q.Question_ID || `${chapterId}-q${index}`;
             const name = `tc-quiz-${chapterId}-${qid}`;
@@ -258,8 +336,9 @@
                 ["D", q.Option_D],
             ];
 
-            html += `<div class="tc-mcq-item" data-correct="${escapeHtml(correct)}">`;
-            html += `<p class="tc-mcq-qtext">${index + 1}. ${escapeHtml(q.Question_Text || "")}</p>`;
+            html += `<div class="tc-mcq-item tc-quiz-page-item" data-correct="${escapeHtml(correct)}">`;
+            html += `<div class="tc-quiz-q-meta"><span class="tc-quiz-q-number">Question ${index + 1}</span></div>`;
+            html += `<p class="tc-mcq-qtext">${escapeHtml(q.Question_Text || "")}</p>`;
             html += `<div class="tc-mcq-options">`;
             options.forEach(([letter, text]) => {
                 html += `
@@ -275,7 +354,22 @@
     }
 
     function bindQuizInteractions(root) {
-        root.querySelectorAll(".tc-mcq-item").forEach((item) => {
+        const items = root.querySelectorAll(".tc-mcq-item");
+        const total = items.length;
+        const progressFill = document.getElementById("tc-quiz-progress-fill");
+        const progressLabel = document.getElementById("tc-quiz-view-progress");
+
+        function updateProgress() {
+            let answered = 0;
+            items.forEach((item) => {
+                if (item.querySelector(".tc-mcq-option input:checked")) answered += 1;
+            });
+            const pct = total ? Math.round((answered / total) * 100) : 0;
+            if (progressFill) progressFill.style.width = `${pct}%`;
+            if (progressLabel) progressLabel.textContent = `${answered} / ${total} answered`;
+        }
+
+        items.forEach((item) => {
             const correct = (item.getAttribute("data-correct") || "A").toUpperCase();
             const feedback = item.querySelector(".tc-mcq-feedback");
             item.querySelectorAll(".tc-mcq-option input").forEach((input) => {
@@ -308,12 +402,15 @@
                             feedback.textContent = `Incorrect. Correct answer is ${correct}.`;
                         }
                     }
+                    updateProgress();
                 });
             });
         });
+
+        updateProgress();
     }
 
-    function buildChapterDetailsHtml(chapters) {
+    function buildChapterListHtml(chapters) {
         if (!chapters || chapters.length === 0) {
             return `<p class="tc-details-loading">No chapters found for this course.</p>`;
         }
@@ -327,7 +424,7 @@
                 const num = ch.Chapter_Number || 0;
                 const videoUrl = ch.Video_Link_Or_Path || "";
                 const pdfUrl = buildPdfUrl(ch.PDF_Link_Or_Path);
-                const quizHtml = renderInteractiveQuiz(ch.quiz, ch.Chapter_ID);
+                const hasQuiz = ch.quiz && Array.isArray(ch.quiz.questions) && ch.quiz.questions.length > 0;
 
                 return `
                 <div class="tc-chapter-accordion" data-chapter-id="${ch.Chapter_ID}">
@@ -339,94 +436,211 @@
                         <i class="fa-solid fa-chevron-down tc-chapter-chevron"></i>
                     </button>
                     <div class="tc-chapter-body">
-                        <div class="tc-media-row">
+                        <div class="tc-chapter-actions-grid">
                             ${
                                 videoUrl
-                                    ? `<button type="button" class="tc-btn tc-btn-sm tc-btn-play tc-open-video" data-video-url="${escapeHtml(videoUrl)}" data-video-title="${escapeHtml(ch.Chapter_Title || "Lecture")}">
-                                        <i class="fa-solid fa-play"></i> Watch Lecture
+                                    ? `<button type="button" class="tc-action-tile tc-open-video" data-video-url="${escapeHtml(videoUrl)}" data-video-title="${escapeHtml(ch.Chapter_Title || "Lecture")}">
+                                        <span class="tc-action-icon tc-action-icon-video"><i class="fa-solid fa-circle-play"></i></span>
+                                        <span class="tc-action-copy">
+                                            <strong>Lecture Video</strong>
+                                            <small>Open video preview</small>
+                                        </span>
                                        </button>`
-                                    : `<span class="tc-details-loading">No video linked</span>`
+                                    : `<div class="tc-action-tile tc-action-tile-disabled">
+                                        <span class="tc-action-icon"><i class="fa-solid fa-circle-play"></i></span>
+                                        <span class="tc-action-copy"><strong>Lecture Video</strong><small>Not available</small></span>
+                                       </div>`
                             }
                             ${
                                 pdfUrl
-                                    ? `<a class="tc-btn tc-btn-sm tc-btn-pdf" href="${escapeHtml(pdfUrl)}" target="_blank" rel="noopener noreferrer">
-                                        <i class="fa-solid fa-file-pdf"></i> Open PDF
+                                    ? `<a class="tc-action-tile tc-action-tile-pdf" href="${escapeHtml(pdfUrl)}" target="_blank" rel="noopener noreferrer">
+                                        <span class="tc-action-icon tc-action-icon-pdf"><i class="fa-solid fa-file-pdf"></i></span>
+                                        <span class="tc-action-copy">
+                                            <strong>PDF Resource</strong>
+                                            <small>Open / download document</small>
+                                        </span>
                                        </a>`
-                                    : `<span class="tc-details-loading">No PDF linked</span>`
+                                    : `<div class="tc-action-tile tc-action-tile-disabled">
+                                        <span class="tc-action-icon"><i class="fa-solid fa-file-pdf"></i></span>
+                                        <span class="tc-action-copy"><strong>PDF Resource</strong><small>Not available</small></span>
+                                       </div>`
+                            }
+                            ${
+                                hasQuiz
+                                    ? `<button type="button" class="tc-action-tile tc-action-tile-quiz tc-open-chapter-quiz" data-chapter-id="${ch.Chapter_ID}">
+                                        <span class="tc-action-icon tc-action-icon-quiz"><i class="fa-solid fa-list-check"></i></span>
+                                        <span class="tc-action-copy">
+                                            <strong>View Chapter Quiz</strong>
+                                            <small>${ch.quiz.questions.length} MCQ question(s)</small>
+                                        </span>
+                                       </button>`
+                                    : `<div class="tc-action-tile tc-action-tile-disabled">
+                                        <span class="tc-action-icon"><i class="fa-solid fa-list-check"></i></span>
+                                        <span class="tc-action-copy"><strong>View Chapter Quiz</strong><small>No quiz generated</small></span>
+                                       </div>`
                             }
                         </div>
-                        <div class="tc-quiz-block">${quizHtml}</div>
                     </div>
                 </div>`;
             })
             .join("");
     }
 
-    function bindDetailsPanelEvents(panel) {
-        panel.querySelectorAll(".tc-chapter-header").forEach((btn) => {
+    function bindCourseViewChapterEvents(listRoot, courseDetail) {
+        listRoot.querySelectorAll(".tc-chapter-header").forEach((btn) => {
             btn.addEventListener("click", () => {
                 const accordion = btn.closest(".tc-chapter-accordion");
-                if (accordion) accordion.classList.toggle("open");
+                if (!accordion) return;
+                const wasOpen = accordion.classList.contains("open");
+                listRoot.querySelectorAll(".tc-chapter-accordion").forEach((el) => el.classList.remove("open"));
+                if (!wasOpen) accordion.classList.add("open");
             });
         });
 
-        panel.querySelectorAll(".tc-open-video").forEach((btn) => {
+        listRoot.querySelectorAll(".tc-open-video").forEach((btn) => {
             btn.addEventListener("click", () => {
                 openVideoModal(btn.getAttribute("data-video-url"), btn.getAttribute("data-video-title"));
             });
         });
 
-        bindQuizInteractions(panel);
+        listRoot.querySelectorAll(".tc-open-chapter-quiz").forEach((btn) => {
+            btn.addEventListener("click", () => {
+                const chapterId = Number(btn.getAttribute("data-chapter-id"));
+                const chapter = (courseDetail.chapters || []).find((c) => c.Chapter_ID === chapterId);
+                if (chapter) openQuizView(courseDetail, chapter);
+            });
+        });
     }
 
-    async function toggleCourseDetails(card, courseId, expandBtn) {
-        const panel = card.querySelector(".tc-details-panel");
-        if (!panel) return;
+    function closeCourseView() {
+        const overlay = document.getElementById("tc-course-view-overlay");
+        if (overlay) {
+            overlay.classList.remove("open");
+            overlay.setAttribute("aria-hidden", "true");
+        }
+        if (!document.getElementById("tc-quiz-view-overlay")?.classList.contains("open")) {
+            lockBodyScroll(false);
+        }
+    }
 
-        const isOpen = panel.classList.contains("open");
-        if (isOpen) {
-            panel.classList.remove("open");
-            panel.hidden = true;
-            if (expandBtn) {
-                expandBtn.innerHTML = `<i class="fa-solid fa-chevron-down"></i> View Details`;
-            }
-            return;
+    function closeQuizView() {
+        const overlay = document.getElementById("tc-quiz-view-overlay");
+        const questions = document.getElementById("tc-quiz-view-questions");
+        if (questions) questions.innerHTML = "";
+        if (overlay) {
+            overlay.classList.remove("open");
+            overlay.setAttribute("aria-hidden", "true");
+        }
+        // Return focus to course view if it is still open
+        const courseOverlay = document.getElementById("tc-course-view-overlay");
+        if (courseOverlay && courseOverlay.classList.contains("open")) {
+            lockBodyScroll(true);
+        } else {
+            lockBodyScroll(false);
+        }
+    }
+
+    function openQuizView(courseDetail, chapter) {
+        const overlay = document.getElementById("tc-quiz-view-overlay");
+        const titleEl = document.getElementById("tc-quiz-view-title");
+        const chapterLabel = document.getElementById("tc-quiz-view-chapter-label");
+        const questionsEl = document.getElementById("tc-quiz-view-questions");
+        if (!overlay || !questionsEl) return;
+
+        const quiz = chapter.quiz || {};
+        const qCount = Array.isArray(quiz.questions) ? quiz.questions.length : 0;
+
+        if (chapterLabel) {
+            chapterLabel.textContent = `Chapter ${chapter.Chapter_Number || ""} · ${chapter.Chapter_Title || "Quiz"}`;
+        }
+        if (titleEl) {
+            titleEl.textContent = quiz.Quiz_Title || `${chapter.Chapter_Title || "Chapter"} Quiz`;
         }
 
-        panel.hidden = false;
-        panel.classList.add("open");
-        panel.innerHTML = `<p class="tc-details-loading"><i class="fa-solid fa-spinner fa-spin"></i> Loading course details...</p>`;
-        if (expandBtn) {
-            expandBtn.innerHTML = `<i class="fa-solid fa-chevron-up"></i> Hide Details`;
+        questionsEl.innerHTML = renderInteractiveQuiz(quiz, chapter.Chapter_ID);
+        bindQuizInteractions(questionsEl);
+
+        const progressLabel = document.getElementById("tc-quiz-view-progress");
+        if (progressLabel) progressLabel.textContent = `0 / ${qCount} answered`;
+        const progressFill = document.getElementById("tc-quiz-progress-fill");
+        if (progressFill) progressFill.style.width = "0%";
+
+        overlay.classList.add("open");
+        overlay.setAttribute("aria-hidden", "false");
+        lockBodyScroll(true);
+    }
+
+    async function fetchCourseDetail(courseId) {
+        if (detailsCache[courseId]) return detailsCache[courseId];
+
+        const token = getToken();
+        const response = await fetch(`${API_BASE_URL}/teacher/course-details/${courseId}`, {
+            headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!response.ok) {
+            let detailMsg = `Failed to load details (${response.status})`;
+            try {
+                const err = await response.json();
+                detailMsg = err.detail || detailMsg;
+            } catch (_) {}
+            throw new Error(detailMsg);
         }
+        const detail = await response.json();
+        detailsCache[courseId] = detail;
+        return detail;
+    }
+
+    async function openCourseView(courseSummary) {
+        await ensureCourseCardComponentsLoaded();
+
+        const overlay = document.getElementById("tc-course-view-overlay");
+        const titleEl = document.getElementById("tc-course-view-title");
+        const descEl = document.getElementById("tc-course-view-description");
+        const priceEl = document.getElementById("tc-course-view-price");
+        const chaptersBadge = document.getElementById("tc-course-view-chapters");
+        const listEl = document.getElementById("tc-course-view-chapters-list");
+        if (!overlay || !listEl) return;
+
+        if (titleEl) titleEl.textContent = courseSummary.Title || "Untitled Course";
+        if (descEl) {
+            descEl.textContent =
+                courseSummary.Description && String(courseSummary.Description).trim()
+                    ? courseSummary.Description
+                    : "No description provided.";
+        }
+        if (priceEl) priceEl.textContent = formatPrice(courseSummary.Price);
+        if (chaptersBadge) {
+            const count = courseSummary.chapter_count || 0;
+            chaptersBadge.textContent = count === 1 ? "1 Chapter" : `${count} Chapters`;
+        }
+
+        listEl.innerHTML = `<p class="tc-details-loading"><i class="fa-solid fa-spinner fa-spin"></i> Loading course modules...</p>`;
+        overlay.classList.add("open");
+        overlay.setAttribute("aria-hidden", "false");
+        lockBodyScroll(true);
 
         try {
-            let detail = detailsCache[courseId];
-            if (!detail) {
-                const token = getToken();
-                const response = await fetch(`${API_BASE_URL}/teacher/course-details/${courseId}`, {
-                    headers: { Authorization: `Bearer ${token}` },
-                });
-                if (!response.ok) {
-                    let detailMsg = `Failed to load details (${response.status})`;
-                    try {
-                        const err = await response.json();
-                        detailMsg = err.detail || detailMsg;
-                    } catch (_) {}
-                    throw new Error(detailMsg);
-                }
-                detail = await response.json();
-                detailsCache[courseId] = detail;
+            const detail = await fetchCourseDetail(courseSummary.Course_ID);
+            activeCourseDetail = detail;
+
+            if (titleEl) titleEl.textContent = detail.Title || courseSummary.Title || "Untitled Course";
+            if (descEl) {
+                descEl.textContent =
+                    detail.Description && String(detail.Description).trim()
+                        ? detail.Description
+                        : "No description provided.";
+            }
+            if (priceEl) priceEl.textContent = formatPrice(detail.Price);
+            if (chaptersBadge) {
+                const count = (detail.chapters || []).length;
+                chaptersBadge.textContent = count === 1 ? "1 Chapter" : `${count} Chapters`;
             }
 
-            panel.innerHTML = buildChapterDetailsHtml(detail.chapters || []);
-            bindDetailsPanelEvents(panel);
-
-            const first = panel.querySelector(".tc-chapter-accordion");
-            if (first) first.classList.add("open");
+            listEl.innerHTML = buildChapterListHtml(detail.chapters || []);
+            bindCourseViewChapterEvents(listEl, detail);
         } catch (err) {
             console.error(err);
-            panel.innerHTML = `<p class="tc-details-error"><i class="fa-solid fa-triangle-exclamation"></i> ${escapeHtml(err.message)}</p>`;
+            listEl.innerHTML = `<p class="tc-details-error"><i class="fa-solid fa-triangle-exclamation"></i> ${escapeHtml(err.message)}</p>`;
         }
     }
 
@@ -437,9 +651,10 @@
 
         const chapterLabel =
             course.chapter_count === 1 ? "1 Chapter" : `${course.chapter_count || 0} Chapters`;
-        const desc = course.Description && String(course.Description).trim()
-            ? course.Description
-            : "No description provided.";
+        const desc =
+            course.Description && String(course.Description).trim()
+                ? course.Description
+                : "No description provided.";
 
         card.innerHTML = `
             <div class="tc-course-card-accent"></div>
@@ -458,24 +673,32 @@
                         <i class="fa-solid fa-pen"></i> Edit Info
                     </button>
                     <button type="button" class="tc-btn tc-btn-primary tc-btn-view-details">
-                        <i class="fa-solid fa-chevron-down"></i> View Details
+                        <i class="fa-solid fa-arrow-up-right-from-square"></i> View Details
                     </button>
                 </div>
             </div>
-            <div class="tc-details-panel" hidden></div>
         `;
 
         const editBtn = card.querySelector(".tc-btn-edit-info");
         const viewBtn = card.querySelector(".tc-btn-view-details");
 
         if (editBtn) {
-            editBtn.addEventListener("click", () => openEditCourseModal(course));
+            editBtn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                openEditCourseModal(course);
+            });
         }
         if (viewBtn) {
-            viewBtn.addEventListener("click", () =>
-                toggleCourseDetails(card, course.Course_ID, viewBtn)
-            );
+            viewBtn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                openCourseView(course);
+            });
         }
+
+        card.addEventListener("click", (e) => {
+            if (e.target.closest("button")) return;
+            openCourseView(course);
+        });
 
         return card;
     }
@@ -559,7 +782,6 @@
         }
     });
 
-    // Expose for manual refresh / debugging
     window.fetchAndRenderTeacherCourses = fetchAndRenderTeacherCourses;
     window.openEditCourseModal = openEditCourseModal;
 })();

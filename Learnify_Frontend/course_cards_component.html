@@ -39,8 +39,8 @@
     </div>
 </div>
 
-<!-- Video Player Modal -->
-<div id="tc-video-modal" class="tc-modal-overlay" aria-hidden="true">
+<!-- Video Player Modal (z-index above full-page course/quiz overlays) -->
+<div id="tc-video-modal" class="tc-modal-overlay" style="z-index: 10050;" aria-hidden="true">
     <div class="tc-modal tc-modal-wide" role="dialog" aria-labelledby="tc-video-modal-title">
         <div class="tc-modal-header">
             <h3 id="tc-video-modal-title"><i class="fa-solid fa-circle-play"></i> Lecture Preview</h3>
@@ -49,7 +49,73 @@
             </button>
         </div>
         <div class="tc-modal-body">
-            <div class="tc-video-frame-wrap" id="tc-video-player-container"></div>
+            <div class="tc-video-frame-wrap" id="tc-video-player-container">
+                <iframe
+                    id="tc-youtube-iframe"
+                    title="Lecture video"
+                    src=""
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allowfullscreen
+                    referrerpolicy="strict-origin-when-cross-origin"
+                ></iframe>
+            </div>
+            <p id="tc-video-error" class="tc-details-error" hidden style="margin-top:12px;"></p>
+        </div>
+    </div>
+</div>
+
+<!-- Full-Page Course Details Overlay -->
+<div id="tc-course-view-overlay" class="tc-fullpage-overlay" aria-hidden="true">
+    <div class="tc-fullpage-shell" role="dialog" aria-modal="true" aria-labelledby="tc-course-view-title">
+        <header class="tc-fullpage-header">
+            <div class="tc-fullpage-header-left">
+                <button type="button" class="tc-btn tc-btn-nav" id="tc-course-view-close" data-tc-close="course-view">
+                    <i class="fa-solid fa-arrow-left"></i> Back to My Courses
+                </button>
+            </div>
+            <div class="tc-fullpage-header-meta">
+                <span class="tc-fullpage-badge" id="tc-course-view-price">LKR 0.00</span>
+                <span class="tc-fullpage-badge tc-fullpage-badge-soft" id="tc-course-view-chapters">0 Chapters</span>
+            </div>
+        </header>
+        <div class="tc-fullpage-hero">
+            <p class="tc-fullpage-kicker">Course Details</p>
+            <h2 id="tc-course-view-title">Course Title</h2>
+            <p id="tc-course-view-description" class="tc-fullpage-description">Description</p>
+        </div>
+        <div class="tc-fullpage-content">
+            <h3 class="tc-fullpage-section-title"><i class="fa-solid fa-book-open"></i> Chapters &amp; Modules</h3>
+            <div id="tc-course-view-chapters-list" class="tc-course-chapters-list">
+                <p class="tc-details-loading">Loading chapters...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Dedicated Full-Page Chapter Quiz View -->
+<div id="tc-quiz-view-overlay" class="tc-fullpage-overlay tc-quiz-fullpage" aria-hidden="true">
+    <div class="tc-fullpage-shell" role="dialog" aria-modal="true" aria-labelledby="tc-quiz-view-title">
+        <header class="tc-fullpage-header">
+            <div class="tc-fullpage-header-left">
+                <button type="button" class="tc-btn tc-btn-nav" id="tc-quiz-view-back" data-tc-close="quiz-view">
+                    <i class="fa-solid fa-arrow-left"></i> Back to Course
+                </button>
+            </div>
+            <div class="tc-fullpage-header-meta">
+                <span class="tc-fullpage-badge tc-fullpage-badge-soft" id="tc-quiz-view-progress">0 / 0</span>
+            </div>
+        </header>
+        <div class="tc-fullpage-hero tc-quiz-hero">
+            <p class="tc-fullpage-kicker" id="tc-quiz-view-chapter-label">Chapter Quiz</p>
+            <h2 id="tc-quiz-view-title">Quiz Title</h2>
+            <div class="tc-quiz-progress-track">
+                <div class="tc-quiz-progress-fill" id="tc-quiz-progress-fill" style="width: 0%;"></div>
+            </div>
+        </div>
+        <div class="tc-fullpage-content">
+            <div id="tc-quiz-view-questions" class="tc-quiz-page-questions">
+                <p class="tc-details-loading">Loading quiz...</p>
+            </div>
         </div>
     </div>
 </div>
@@ -73,11 +139,10 @@
                     <i class="fa-solid fa-pen"></i> Edit Info
                 </button>
                 <button type="button" class="tc-btn tc-btn-primary tc-btn-view-details">
-                    <i class="fa-solid fa-chevron-down"></i> View Details
+                    <i class="fa-solid fa-arrow-up-right-from-square"></i> View Details
                 </button>
             </div>
         </div>
-        <div class="tc-details-panel" hidden></div>
     </article>
 </template>
 
@@ -91,8 +156,7 @@
             <i class="fa-solid fa-chevron-down tc-chapter-chevron"></i>
         </button>
         <div class="tc-chapter-body">
-            <div class="tc-media-row"></div>
-            <div class="tc-quiz-block"></div>
+            <div class="tc-media-row tc-chapter-actions-grid"></div>
         </div>
     </div>
 </template>
