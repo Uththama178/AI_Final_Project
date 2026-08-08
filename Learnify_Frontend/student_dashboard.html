@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Learnify - Student Dashboard</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="student-dashboard-body">
+
+    <div class="student-dashboard-layout" id="student-dashboard">
+
+        <!-- ===================== SIDEBAR ===================== -->
+        <aside class="student-sidebar" id="student-sidebar">
+            <div class="student-sidebar-brand" id="student-sidebar-brand">
+                <div class="student-brand-mark" id="student-brand-mark" aria-hidden="true">
+                    <i class="fa-solid fa-graduation-cap"></i>
+                </div>
+                <div class="student-brand-text">
+                    <span class="student-brand-name">Learnify</span>
+                    <span class="student-brand-role">Student Portal</span>
+                </div>
+            </div>
+
+            <nav class="student-sidebar-nav" id="student-sidebar-nav" aria-label="Student navigation">
+                <ul class="student-menu" id="student-menu">
+                    <li class="student-menu-item active" data-tab="courses" id="nav-courses">
+                        <i class="fa-solid fa-book-open"></i>
+                        <span>Courses</span>
+                    </li>
+                    <li class="student-menu-item" data-tab="my-courses" id="nav-my-courses">
+                        <i class="fa-solid fa-bookmark"></i>
+                        <span>My Courses</span>
+                    </li>
+                    <li class="student-menu-item" data-tab="finish-courses" id="nav-finish-courses">
+                        <i class="fa-solid fa-flag-checkered"></i>
+                        <span>Finish Courses</span>
+                    </li>
+                    <li class="student-menu-item" data-tab="course-result" id="nav-course-result">
+                        <i class="fa-solid fa-chart-column"></i>
+                        <span>Course Result</span>
+                    </li>
+                    <li class="student-menu-item" data-tab="recommendations" id="nav-recommendations">
+                        <i class="fa-solid fa-lightbulb"></i>
+                        <span>Recommendations</span>
+                    </li>
+                </ul>
+            </nav>
+
+            <div class="student-sidebar-footer" id="student-sidebar-footer">
+                <button type="button" class="student-logout-btn" id="logout-btn">
+                    <i class="fa-solid fa-right-from-bracket"></i>
+                    <span>Log Out</span>
+                </button>
+            </div>
+        </aside>
+
+        <!-- ===================== MAIN ===================== -->
+        <main class="student-main" id="student-main">
+
+            <!-- Top header with dynamic student name -->
+            <header class="student-top-header" id="student-top-header">
+                <div class="student-header-welcome" id="student-header-welcome">
+                    <p class="student-header-kicker" id="student-header-kicker">Student Dashboard</p>
+                    <h1 class="student-welcome-title" id="student-welcome-title">
+                        Welcome back, <span id="student-name">Student</span>!
+                    </h1>
+                    <p class="student-welcome-sub" id="student-welcome-sub">
+                        Continue learning, track progress, and explore new courses.
+                    </p>
+                </div>
+                <div class="student-header-meta" id="student-header-meta">
+                    <div class="student-header-user" id="student-header-user">
+                        <span class="student-header-avatar" id="student-header-avatar" aria-hidden="true">
+                            <i class="fa-solid fa-user"></i>
+                        </span>
+                        <div class="student-header-user-text">
+                            <strong id="student-display-name">Student</strong>
+                            <small id="student-display-email">student@learnify.com</small>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Main content panels (tab targets) -->
+            <div class="student-content-body" id="student-content-body">
+
+                <!-- Tab: Courses (default active) -->
+                <section class="student-tab-content active" id="courses" data-panel="courses">
+                    <div class="student-panel-card" id="courses-panel">
+                        <div class="student-panel-header">
+                            <h2><i class="fa-solid fa-book-open"></i> Available Courses</h2>
+                            <p>Browse and enroll in courses published on Learnify.</p>
+                        </div>
+                        <div class="student-courses-grid" id="available-courses-container">
+                            <div class="student-empty-state" id="available-courses-empty">
+                                <i class="fa-solid fa-layer-group"></i>
+                                <p>No courses to show yet. Check back soon!</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Tab: My Courses -->
+                <section class="student-tab-content" id="my-courses" data-panel="my-courses">
+                    <div class="student-panel-card" id="my-courses-panel">
+                        <div class="student-panel-header">
+                            <h2><i class="fa-solid fa-bookmark"></i> My Courses</h2>
+                            <p>Courses you are currently enrolled in.</p>
+                        </div>
+                        <div class="student-courses-grid" id="my-courses-container">
+                            <div class="student-empty-state" id="my-courses-empty">
+                                <i class="fa-solid fa-bookmark"></i>
+                                <p>You have not enrolled in any courses yet.</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Tab: Finish Courses -->
+                <section class="student-tab-content" id="finish-courses" data-panel="finish-courses">
+                    <div class="student-panel-card" id="finish-courses-panel">
+                        <div class="student-panel-header">
+                            <h2><i class="fa-solid fa-flag-checkered"></i> Finished Courses</h2>
+                            <p>Courses you have completed successfully.</p>
+                        </div>
+                        <div class="student-courses-grid" id="finish-courses-container">
+                            <div class="student-empty-state" id="finish-courses-empty">
+                                <i class="fa-solid fa-flag-checkered"></i>
+                                <p>No finished courses yet. Keep learning!</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Tab: Course Result -->
+                <section class="student-tab-content" id="course-result" data-panel="course-result">
+                    <div class="student-panel-card" id="course-result-panel">
+                        <div class="student-panel-header">
+                            <h2><i class="fa-solid fa-chart-column"></i> Course Results</h2>
+                            <p>Quiz scores and performance overview.</p>
+                        </div>
+                        <div class="student-results-wrap" id="course-results-container">
+                            <div class="student-empty-state" id="course-results-empty">
+                                <i class="fa-solid fa-chart-column"></i>
+                                <p>Results will appear here after you complete quizzes.</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Tab: Recommendations -->
+                <section class="student-tab-content" id="recommendations" data-panel="recommendations">
+                    <div class="student-panel-card" id="recommendations-panel">
+                        <div class="student-panel-header">
+                            <h2><i class="fa-solid fa-lightbulb"></i> Recommendations</h2>
+                            <p>Personalized course suggestions for you.</p>
+                        </div>
+                        <div class="student-courses-grid" id="recommendations-container">
+                            <div class="student-empty-state" id="recommendations-empty">
+                                <i class="fa-solid fa-lightbulb"></i>
+                                <p>Recommendations will show up as you learn more.</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+            </div>
+        </main>
+    </div>
+
+    <script src="student_dashboard.js"></script>
+</body>
+</html>
