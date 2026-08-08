@@ -675,12 +675,16 @@
                     <button type="button" class="tc-btn tc-btn-primary tc-btn-view-details">
                         <i class="fa-solid fa-arrow-up-right-from-square"></i> View Details
                     </button>
+                    <button type="button" class="tc-btn tc-btn-danger tc-btn-delete-course">
+                        <i class="fa-solid fa-trash"></i> Delete
+                    </button>
                 </div>
             </div>
         `;
 
         const editBtn = card.querySelector(".tc-btn-edit-info");
         const viewBtn = card.querySelector(".tc-btn-view-details");
+        const deleteBtn = card.querySelector(".tc-btn-delete-course");
 
         if (editBtn) {
             editBtn.addEventListener("click", (e) => {
@@ -694,6 +698,12 @@
                 openCourseView(course);
             });
         }
+        if (deleteBtn) {
+            deleteBtn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                confirmAndDeleteCourse(course);
+            });
+        }
 
         card.addEventListener("click", (e) => {
             if (e.target.closest("button")) return;
@@ -701,6 +711,50 @@
         });
 
         return card;
+    }
+
+    async function confirmAndDeleteCourse(course) {
+        if (!course || !course.Course_ID) return;
+
+        const title = course.Title || "this course";
+        const confirmed = window.confirm(
+            `Delete "${title}"?\n\nThis will permanently remove the course, chapters, quizzes, and uploaded PDF files. This cannot be undone.`
+        );
+        if (!confirmed) return;
+
+        const token = getToken();
+        if (!token) {
+            alert("Please log in again to delete a course.");
+            return;
+        }
+
+        try {
+            const response = await fetch(
+                `${API_BASE_URL}/teacher/delete-course/${course.Course_ID}`,
+                {
+                    method: "DELETE",
+                    headers: { Authorization: `Bearer ${token}` },
+                }
+            );
+
+            if (!response.ok) {
+                let detail = `Delete failed (${response.status})`;
+                try {
+                    const err = await response.json();
+                    detail = err.detail || detail;
+                } catch (_) {}
+                throw new Error(detail);
+            }
+
+            delete detailsCache[course.Course_ID];
+            closeCourseView();
+            closeQuizView();
+            alert("Course deleted successfully.");
+            await fetchAndRenderTeacherCourses();
+        } catch (err) {
+            console.error(err);
+            alert(`❌ ${err.message}`);
+        }
     }
 
     async function fetchAndRenderTeacherCourses() {

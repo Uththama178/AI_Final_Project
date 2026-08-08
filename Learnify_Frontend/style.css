@@ -2073,3 +2073,15 @@ body {
         background: linear-gradient(165deg, #0A1931 0%, #1A3D63 34%, #F6FAFD 34%, #F6FAFD 100%);
     }
 }
+
+/* Delete Course button (appended for delete-course feature) */
+.tc-btn-danger {
+    background: #fff;
+    color: #c0392b;
+    border: 1px solid rgba(192, 57, 43, 0.35);
+}
+
+.tc-btn-danger:hover {
+    background: #c0392b;
+    color: #fff;
+}
