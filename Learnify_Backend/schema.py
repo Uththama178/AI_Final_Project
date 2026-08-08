@@ -136,3 +136,48 @@ class CourseDetailResponse(BaseModel):
         from_attributes = True
 
 
+# 8. Course Publish Request / Response
+class CoursePublishRequest(BaseModel):
+    is_published: bool = True
+
+
+class CoursePublishResponse(BaseModel):
+    Course_ID: int
+    Title: str
+    is_published: bool
+    message: str
+
+    class Config:
+        from_attributes = True
+
+
+# 9. Student catalog / enrollment schemas
+class StudentPublishedCourseResponse(BaseModel):
+    Course_ID: int
+    Title: str
+    Description: Optional[str] = None
+    Price: float
+    Teacher_ID: int
+    Teacher_Name: str
+    chapter_count: int
+    is_published: bool = True
+
+
+class StudentEnrollmentResponse(BaseModel):
+    status: str
+    message: str
+    Enrollment_ID: int
+    Course_ID: int
+
+
+class StudentEnrolledCourseResponse(BaseModel):
+    Course_ID: int
+    Title: str
+    Description: Optional[str] = None
+    Price: float
+    Teacher_Name: str
+    Enrollment_ID: int
+    Enrollment_Date: Optional[str] = None
+    chapters: List[ChapterDetailResponse] = []
+
+

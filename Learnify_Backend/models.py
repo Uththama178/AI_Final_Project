@@ -64,6 +64,7 @@ class Course(Base):
     Title = Column(String(150), nullable=False)
     Description = Column(TEXT)
     Price = Column(Numeric(10, 2), default=0.00)
+    is_published = Column(Boolean, nullable=False, default=False)
 
     # Relationships
     teacher = relationship("Teacher", back_populates="courses")

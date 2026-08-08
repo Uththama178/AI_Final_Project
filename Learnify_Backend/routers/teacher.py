@@ -1,7 +1,7 @@
 import os
 import shutil
 import uuid  # 🆕 අලුත් Unique නමක් හැදීම සඳහා
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status, Depends
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status, Depends, Body
 from sqlalchemy.orm import Session
 from database import get_db
 import models
@@ -433,3 +433,44 @@ def delete_course(
         "course_id": course_id,
         "deleted_pdf_count": len(deleted_files),
     }
+
+
+# ====================================================================================
+# 📢 Endpoint 7: Publish / Unpublish Course (owner teacher only)
+# ====================================================================================
+@router.put("/publish-course/{course_id}", response_model=schema.CoursePublishResponse)
+def publish_course(
+    course_id: int,
+    payload: schema.CoursePublishRequest = Body(default={"is_published": True}),
+    db: Session = Depends(get_db),
+    current_user: models.AppUser = Depends(get_current_user)
+):
+    """
+    Sets is_published for a course owned by the logged-in teacher.
+    Default body sets is_published=True (publish). Pass false to unpublish.
+    """
+    if current_user.Role.lower() not in ["teacher", "both"]:
+        raise HTTPException(status_code=403, detail="මෙම ක්‍රියාව සිදු කිරීමට ඔබට අවසර නැත. ටීචර් කෙනෙකු ලෙස ලොග් වන්න.")
+
+    teacher_profile = db.query(models.Teacher).filter(models.Teacher.User_ID == current_user.User_ID).first()
+    if not teacher_profile:
+        raise HTTPException(status_code=404, detail="ටීචර් ප්‍රොෆයිල් එකක් හමු වුණේ නැත.")
+
+    course = db.query(models.Course).filter(
+        models.Course.Course_ID == course_id,
+        models.Course.Teacher_ID == teacher_profile.Teacher_ID
+    ).first()
+    if not course:
+        raise HTTPException(status_code=404, detail="කෝස් එක හමු වුණේ නැත හෝ ඔබට අයිතියක් නැත.")
+
+    course.is_published = bool(payload.is_published)
+    db.commit()
+    db.refresh(course)
+
+    action = "published" if course.is_published else "unpublished"
+    return schema.CoursePublishResponse(
+        Course_ID=course.Course_ID,
+        Title=course.Title,
+        is_published=course.is_published,
+        message=f"Course successfully {action}.",
+    )

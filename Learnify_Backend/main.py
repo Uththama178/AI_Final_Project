@@ -17,11 +17,22 @@ from models import (
 import schema
 import auth  
 from routers import teacher # 👈 1. අපේ අලුත් ටීචර් රවුටර් එක Import කිරීම
+from routers import student
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     print("Attempting to create all 11 tables in MySQL...")
     Base.metadata.create_all(bind=engine)
+    # Ensure publish flag exists on existing course tables (no-op if already present)
+    try:
+        from sqlalchemy import text
+        with engine.begin() as conn:
+            conn.execute(text(
+                "ALTER TABLE course ADD COLUMN is_published BOOLEAN NOT NULL DEFAULT FALSE"
+            ))
+    except Exception:
+        # Column already exists (or DB dialect difference) — safe to ignore
+        pass
     print("✅ Table Creation Process Finished!")
     yield
 
@@ -128,4 +139,5 @@ def login(user: schema.UserLogin, db: Session = Depends(get_db)):
 
 # 👈 2. ටීචර් රවුටර් එක FastAPI ඇප් එකට සම්බන්ධ කිරීම
 app.include_router(teacher.router)
+app.include_router(student.router)
 

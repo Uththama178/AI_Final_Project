@@ -1,0 +1,242 @@
+"""Student Dashboard API — published catalog, enrollment, and enrolled course content."""
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session, joinedload
+from jose import JWTError, jwt
+from fastapi.security import OAuth2PasswordBearer
+
+from database import get_db
+import models
+import schema
+
+router = APIRouter(
+    prefix="/student",
+    tags=["Student Dashboard"],
+)
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+SECRET_KEY = "learnify-secret-key-change-me"
+ALGORITHM = "HS256"
+
+
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get("sub")
+        if email is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+
+    user = db.query(models.AppUser).filter(models.AppUser.Email == email.lower()).first()
+    if user is None:
+        raise credentials_exception
+    return user
+
+
+def _require_student(current_user: models.AppUser) -> None:
+    if current_user.Role.lower() not in ["student", "both"]:
+        raise HTTPException(
+            status_code=403,
+            detail="This action requires a student account. Please log in as a student.",
+        )
+
+
+def _get_student_profile(db: Session, current_user: models.AppUser) -> models.Student:
+    student = (
+        db.query(models.Student)
+        .filter(models.Student.User_ID == current_user.User_ID)
+        .first()
+    )
+    if not student:
+        raise HTTPException(status_code=404, detail="Student profile not found.")
+    return student
+
+
+def _teacher_name(course: models.Course) -> str:
+    if course.teacher and course.teacher.user:
+        return course.teacher.user.Name
+    return "Unknown Teacher"
+
+
+def _build_chapter_details(course: models.Course) -> list[schema.ChapterDetailResponse]:
+    chapters_payload: list[schema.ChapterDetailResponse] = []
+    for chapter in sorted(course.chapters, key=lambda c: c.Chapter_Number or 0):
+        quiz_payload = None
+        if chapter.quiz:
+            quiz_payload = schema.QuizDetailResponse(
+                Quiz_ID=chapter.quiz.Quiz_ID,
+                Quiz_Title=chapter.quiz.Quiz_Title,
+                questions=[
+                    schema.QuestionDetailResponse(
+                        Question_ID=q.Question_ID,
+                        Question_Text=q.Question_Text,
+                        Option_A=q.Option_A,
+                        Option_B=q.Option_B,
+                        Option_C=q.Option_C,
+                        Option_D=q.Option_D,
+                        Correct_Answer=q.Correct_Answer,
+                    )
+                    for q in (chapter.quiz.questions or [])
+                ],
+            )
+        chapters_payload.append(
+            schema.ChapterDetailResponse(
+                Chapter_ID=chapter.Chapter_ID,
+                Chapter_Number=chapter.Chapter_Number,
+                Chapter_Title=chapter.Chapter_Title,
+                Video_Link_Or_Path=chapter.Video_Link_Or_Path,
+                PDF_Link_Or_Path=chapter.PDF_Link_Or_Path,
+                quiz=quiz_payload,
+            )
+        )
+    return chapters_payload
+
+
+# ====================================================================================
+# 1) GET /student/courses — published catalog (read-only)
+# ====================================================================================
+@router.get("/courses", response_model=list[schema.StudentPublishedCourseResponse])
+def get_published_courses(
+    db: Session = Depends(get_db),
+    current_user: models.AppUser = Depends(get_current_user),
+):
+    _require_student(current_user)
+
+    courses = (
+        db.query(models.Course)
+        .options(joinedload(models.Course.teacher).joinedload(models.Teacher.user))
+        .filter(models.Course.is_published.is_(True))
+        .all()
+    )
+
+    return [
+        schema.StudentPublishedCourseResponse(
+            Course_ID=course.Course_ID,
+            Title=course.Title,
+            Description=course.Description,
+            Price=float(course.Price or 0),
+            Teacher_ID=course.Teacher_ID,
+            Teacher_Name=_teacher_name(course),
+            chapter_count=len(course.chapters or []),
+            is_published=True,
+        )
+        for course in courses
+    ]
+
+
+# ====================================================================================
+# 2) POST /student/enroll/{course_id} — enroll in a published course
+# ====================================================================================
+@router.post(
+    "/enroll/{course_id}",
+    response_model=schema.StudentEnrollmentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def enroll_in_course(
+    course_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.AppUser = Depends(get_current_user),
+):
+    _require_student(current_user)
+    student = _get_student_profile(db, current_user)
+
+    course = (
+        db.query(models.Course)
+        .filter(
+            models.Course.Course_ID == course_id,
+            models.Course.is_published.is_(True),
+        )
+        .first()
+    )
+    if not course:
+        raise HTTPException(
+            status_code=404,
+            detail="Published course not found.",
+        )
+
+    existing = (
+        db.query(models.Enrollment)
+        .filter(
+            models.Enrollment.Student_ID == student.Student_ID,
+            models.Enrollment.Course_ID == course_id,
+        )
+        .first()
+    )
+    if existing:
+        raise HTTPException(
+            status_code=400,
+            detail="You are already enrolled in this course.",
+        )
+
+    enrollment = models.Enrollment(
+        Student_ID=student.Student_ID,
+        Course_ID=course.Course_ID,
+    )
+    db.add(enrollment)
+    db.commit()
+    db.refresh(enrollment)
+
+    return schema.StudentEnrollmentResponse(
+        status="Success",
+        message="Successfully enrolled in the course.",
+        Enrollment_ID=enrollment.Enrollment_ID,
+        Course_ID=course.Course_ID,
+    )
+
+
+# ====================================================================================
+# 3) GET /student/my-courses — enrolled courses with content
+# ====================================================================================
+@router.get("/my-courses", response_model=list[schema.StudentEnrolledCourseResponse])
+def get_my_enrolled_courses(
+    db: Session = Depends(get_db),
+    current_user: models.AppUser = Depends(get_current_user),
+):
+    _require_student(current_user)
+    student = _get_student_profile(db, current_user)
+
+    enrollments = (
+        db.query(models.Enrollment)
+        .options(
+            joinedload(models.Enrollment.course)
+            .joinedload(models.Course.teacher)
+            .joinedload(models.Teacher.user),
+            joinedload(models.Enrollment.course)
+            .joinedload(models.Course.chapters)
+            .joinedload(models.CourseChapter.quiz)
+            .joinedload(models.Quiz.questions),
+        )
+        .filter(models.Enrollment.Student_ID == student.Student_ID)
+        .all()
+    )
+
+    results: list[schema.StudentEnrolledCourseResponse] = []
+    for enrollment in enrollments:
+        course = enrollment.course
+        if not course:
+            continue
+
+        enrollment_date = None
+        if enrollment.Enrollment_Date is not None:
+            enrollment_date = enrollment.Enrollment_Date.isoformat()
+
+        results.append(
+            schema.StudentEnrolledCourseResponse(
+                Course_ID=course.Course_ID,
+                Title=course.Title,
+                Description=course.Description,
+                Price=float(course.Price or 0),
+                Teacher_Name=_teacher_name(course),
+                Enrollment_ID=enrollment.Enrollment_ID,
+                Enrollment_Date=enrollment_date,
+                chapters=_build_chapter_details(course),
+            )
+        )
+
+    return results
