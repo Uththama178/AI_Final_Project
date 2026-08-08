@@ -366,3 +366,70 @@ def update_course(
         Price=course.Price,
         chapter_count=len(course.chapters),
     )
+
+
+# ====================================================================================
+# 🗑️ Endpoint 6: Delete Course (DB cascade + safe PDF file cleanup)
+# ====================================================================================
+@router.delete("/delete-course/{course_id}", status_code=status.HTTP_200_OK)
+def delete_course(
+    course_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.AppUser = Depends(get_current_user)
+):
+    """
+    Deletes a course owned by the logged-in teacher.
+    ORM cascades remove chapters, quizzes, and questions.
+    Associated PDF files under uploads/pdfs/ are removed safely from disk.
+    """
+    if current_user.Role.lower() not in ["teacher", "both"]:
+        raise HTTPException(status_code=403, detail="මෙම ක්‍රියාව සිදු කිරීමට ඔබට අවසර නැත. ටීචර් කෙනෙකු ලෙස ලොග් වන්න.")
+
+    teacher_profile = db.query(models.Teacher).filter(models.Teacher.User_ID == current_user.User_ID).first()
+    if not teacher_profile:
+        raise HTTPException(status_code=404, detail="ටීචර් ප්‍රොෆයිල් එකක් හමු වුණේ නැත.")
+
+    course = db.query(models.Course).filter(
+        models.Course.Course_ID == course_id,
+        models.Course.Teacher_ID == teacher_profile.Teacher_ID
+    ).first()
+    if not course:
+        raise HTTPException(status_code=404, detail="කෝස් එක හමු වුණේ නැත හෝ ඔබට අයිතියක් නැත.")
+
+    upload_root = os.path.abspath(UPLOAD_DIR)
+    pdf_candidates = []
+    for chapter in course.chapters:
+        raw_path = (chapter.PDF_Link_Or_Path or "").strip()
+        if raw_path:
+            pdf_candidates.append(raw_path)
+
+    db.delete(course)
+    db.commit()
+
+    deleted_files = []
+    for raw_path in pdf_candidates:
+        normalized = raw_path.replace("\\", "/").strip()
+        if not normalized or ".." in normalized.split("/"):
+            continue
+
+        basename = os.path.basename(normalized)
+        if not basename:
+            continue
+
+        candidate = os.path.abspath(os.path.join(UPLOAD_DIR, basename))
+        if not candidate.startswith(upload_root + os.sep) and candidate != upload_root:
+            continue
+
+        try:
+            if os.path.isfile(candidate):
+                os.remove(candidate)
+                deleted_files.append(basename)
+        except OSError:
+            pass
+
+    return {
+        "status": "Success",
+        "message": "කෝස් එක සහ අදාළ දත්ත සාර්ථකව මකන ලදී.",
+        "course_id": course_id,
+        "deleted_pdf_count": len(deleted_files),
+    }

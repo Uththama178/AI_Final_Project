@@ -114,59 +114,169 @@ def _parse_mcq_output(raw_text: str, passage: str) -> dict[str, Any] | None:
     """
     Parse model text into {question, options, correct_answer, explanation}.
 
-    Supports common formats:
-    - Question / A / B / C / D / Answer lines
-    - JSON-like snippets
-    - Plain question text (options derived from passage as last resort)
+    Supports:
+    - Multi-line Question / A / B / C / D / Answer blocks
+    - Single continuous lines like: "What is X? A) ... B) ... C) ... D) ... Answer: A"
     """
     text = (raw_text or "").strip()
     if not text:
         return None
 
-    # Try structured lettered options first
-    option_matches = re.findall(
-        r"(?:^|\n)\s*([A-Da-d])[\)\.\:\-]\s*(.+?)(?=(?:\n\s*[A-Da-d][\)\.\:\-])|$)",
-        text,
-        flags=re.DOTALL,
-    )
+    # Collapse odd spacing but keep enough structure for markers
+    normalized = " ".join(text.split())
+
     options_map: dict[str, str] = {}
-    for letter, opt_text in option_matches:
-        cleaned = " ".join(opt_text.strip().split())
-        if cleaned:
-            options_map[letter.upper()] = cleaned
-
-    question_match = re.search(
-        r"(?is)(?:question\s*[:\-]\s*)(.+?)(?=\n\s*[A-D][\)\.\:\-]|\n\s*answer\s*[:\-]|$)",
-        text,
-    )
-    if question_match:
-        question = " ".join(question_match.group(1).strip().split())
-    else:
-        # First non-option / non-answer line as question
-        lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
-        question_lines = [
-            ln
-            for ln in lines
-            if not re.match(r"^[A-Da-d][\)\.\:\-]", ln)
-            and not re.match(r"(?i)^answer\s*[:\-]", ln)
-        ]
-        question = question_lines[0] if question_lines else text
-        question = " ".join(question.split())
-
-    answer_match = re.search(r"(?i)answer\s*[:\-]\s*([A-Da-d]|[^\n]+)", text)
+    question = ""
     correct_answer: str | None = None
-    if answer_match:
-        ans_raw = answer_match.group(1).strip()
-        if len(ans_raw) == 1 and ans_raw.upper() in "ABCD":
-            letter = ans_raw.upper()
-            correct_answer = options_map.get(letter, letter)
+    inline_options_found = False
+
+    # -------------------------------------------------------------
+    # 1) Primary: split on inline/single-line A) B) C) D) markers
+    #    Works with or without newlines before each letter.
+    # -------------------------------------------------------------
+    # Split keeps the letter markers as captured groups.
+    # Example:
+    #   "Q text? A) foo B) bar C) baz D) qux Answer: A"
+    # → ["Q text?", "A", "foo", "B", "bar", "C", "baz", "D", "qux Answer: A"]
+    split_parts = re.split(
+        r"(?i)(?:(?<=^)|(?<=\s)|(?<=[?\.\!;:]))([A-D])\s*[\)\.\:\-]\s*",
+        normalized,
+    )
+
+    if len(split_parts) >= 9:
+        # Expected: [question, A, optA, B, optB, C, optC, D, optD(+optional answer tail)]
+        tentative_q = split_parts[0].strip()
+        tentative_map: dict[str, str] = {}
+        i = 1
+        while i + 1 < len(split_parts):
+            letter = split_parts[i].upper()
+            value = split_parts[i + 1].strip()
+            if letter in "ABCD" and letter not in tentative_map:
+                tentative_map[letter] = value
+            i += 2
+
+        if all(k in tentative_map for k in ("A", "B", "C", "D")):
+            inline_options_found = True
+            # Strip trailing "Answer: X" / "Correct: X" off option D (and any option)
+            answer_tail_re = re.compile(
+                r"(?i)\s*(?:correct\s*answer|answer|correct)\s*[:\-]\s*([A-D]|.*)$"
+            )
+            for key in ("A", "B", "C", "D"):
+                opt_val = tentative_map[key]
+                ans_in_opt = answer_tail_re.search(opt_val)
+                if ans_in_opt:
+                    ans_raw = ans_in_opt.group(1).strip()
+                    tentative_map[key] = answer_tail_re.sub("", opt_val).strip()
+                    if correct_answer is None:
+                        if len(ans_raw) == 1 and ans_raw.upper() in "ABCD":
+                            correct_answer = ans_raw.upper()
+                        elif ans_raw:
+                            correct_answer = ans_raw
+
+            options_map = {k: " ".join(tentative_map[k].split()) for k in ("A", "B", "C", "D")}
+            question = " ".join(tentative_q.split())
+            # Also strip a leading "Question:" label if present
+            question = re.sub(r"(?i)^question\s*[:\-]\s*", "", question).strip()
+
+    # -------------------------------------------------------------
+    # 2) Fallback path: newline-oriented option blocks (legacy)
+    # -------------------------------------------------------------
+    if not inline_options_found:
+        option_matches = re.findall(
+            r"(?:^|\n|\s)([A-Da-d])\s*[\)\.\:\-]\s*(.+?)(?=(?:\s+[A-Da-d]\s*[\)\.\:\-])|(?:\s+(?:answer|correct)\s*[:\-])|$)",
+            text,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        for letter, opt_text in option_matches:
+            cleaned = " ".join(opt_text.strip().split())
+            cleaned = re.sub(
+                r"(?i)\s*(?:correct\s*answer|answer|correct)\s*[:\-]\s*.*$",
+                "",
+                cleaned,
+            ).strip()
+            if cleaned and letter.upper() not in options_map:
+                options_map[letter.upper()] = cleaned
+
+        if all(k in options_map for k in ("A", "B", "C", "D")):
+            inline_options_found = True
+
+        # Question = text before the first A)/A./A: marker
+        first_opt = re.search(
+            r"(?i)(?:^|\s)([A-D])\s*[\)\.\:\-]\s+",
+            normalized,
+        )
+        if first_opt:
+            question = normalized[: first_opt.start()].strip()
         else:
-            correct_answer = " ".join(ans_raw.split())
+            question_match = re.search(
+                r"(?is)(?:question\s*[:\-]\s*)(.+?)(?=(?:\s*[A-D]\s*[\)\.\:\-])|(?:\s*answer\s*[:\-])|$)",
+                text,
+            )
+            if question_match:
+                question = " ".join(question_match.group(1).strip().split())
+            else:
+                question = normalized
+
+        question = re.sub(r"(?i)^question\s*[:\-]\s*", "", question).strip()
+        # Remove any glued option/answer remnants still stuck on the question
+        question = re.split(
+            r"(?i)(?:^|\s)[A-D]\s*[\)\.\:\-]\s+",
+            question,
+            maxsplit=1,
+        )[0].strip()
+        question = re.sub(
+            r"(?i)\s*(?:correct\s*answer|answer|correct)\s*[:\-]\s*.*$",
+            "",
+            question,
+        ).strip()
+
+    # -------------------------------------------------------------
+    # 3) Correct answer letter/text (global Answer: ... if not already set)
+    # -------------------------------------------------------------
+    if correct_answer is None:
+        answer_match = re.search(
+            r"(?i)(?:correct\s*answer|answer|correct)\s*[:\-]\s*([A-D]|[^\n]+)",
+            text,
+        )
+        if answer_match:
+            ans_raw = answer_match.group(1).strip()
+            if len(ans_raw) == 1 and ans_raw.upper() in "ABCD":
+                letter = ans_raw.upper()
+                correct_answer = options_map.get(letter, letter)
+            else:
+                # Trim if answer text accidentally includes more options
+                correct_answer = " ".join(ans_raw.split())
+                correct_answer = re.split(
+                    r"(?i)\s+[A-D]\s*[\)\.\:\-]\s+",
+                    correct_answer,
+                    maxsplit=1,
+                )[0].strip()
+
+    # If correct_answer is still a letter, map to option text
+    if correct_answer and len(correct_answer) == 1 and correct_answer.upper() in "ABCD":
+        letter = correct_answer.upper()
+        correct_answer = options_map.get(letter, letter)
 
     options = [options_map[k] for k in ("A", "B", "C", "D") if k in options_map]
 
-    # If model only returned a question, derive simple options from the passage
-    if len(options) < 4:
+    # Final cleanup: never leave option markers glued inside the question
+    if question:
+        question = re.split(
+            r"(?i)\s+[A-D]\s*[\)\.\:\-]\s+",
+            question,
+            maxsplit=1,
+        )[0].strip()
+        question = re.sub(
+            r"(?i)\s*(?:correct\s*answer|answer|correct)\s*[:\-]\s*.*$",
+            "",
+            question,
+        ).strip()
+        question = " ".join(question.split())
+
+    # -------------------------------------------------------------
+    # 4) Passage-word fallback ONLY when no inline A–D options were found
+    # -------------------------------------------------------------
+    if not inline_options_found and len(options) < 4:
         words = [w.strip(",.!?\"'") for w in passage.split() if len(w.strip(",.!?\"'")) > 3]
         unique_words: list[str] = []
         for w in words:
@@ -184,6 +294,10 @@ def _parse_mcq_output(raw_text: str, passage: str) -> dict[str, Any] | None:
                 options.append(unique_words[len(options)])
 
     if not question:
+        return None
+
+    if len(options) < 4:
+        # Incomplete parse even after inline extraction — reject so caller can fall back
         return None
 
     if not correct_answer:
