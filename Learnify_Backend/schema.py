@@ -78,6 +78,7 @@ class CourseSummaryResponse(BaseModel):
     Description: Optional[str] = None
     Price: float
     chapter_count: int
+    is_published: bool = False
 
     class Config:
         from_attributes = True
@@ -178,6 +179,18 @@ class StudentEnrolledCourseResponse(BaseModel):
     Teacher_Name: str
     Enrollment_ID: int
     Enrollment_Date: Optional[str] = None
+    Rating_Stars: Optional[int] = None
     chapters: List[ChapterDetailResponse] = []
 
+
+class StudentCourseRatingRequest(BaseModel):
+    Rating_Stars: int
+    Comment: Optional[str] = None
+
+
+class StudentCourseRatingResponse(BaseModel):
+    status: str
+    message: str
+    Course_ID: int
+    Rating_Stars: int
 

@@ -171,6 +171,30 @@
         </main>
     </div>
 
+    <!-- Student enrolled course content overlay (opened from My Courses) -->
+    <div id="sd-course-view-overlay" class="sd-fullpage-overlay" aria-hidden="true">
+        <div class="sd-fullpage-shell" role="dialog" aria-modal="true" aria-labelledby="sd-course-view-title">
+            <header class="sd-fullpage-header">
+                <button type="button" class="sd-btn sd-btn-nav" id="sd-course-view-close">
+                    <i class="fa-solid fa-arrow-left"></i> Back to My Courses
+                </button>
+                <div class="sd-fullpage-meta">
+                    <span class="sd-chip" id="sd-course-view-teacher">Teacher</span>
+                    <span class="sd-chip sd-chip-price" id="sd-course-view-price">LKR 0.00</span>
+                </div>
+            </header>
+            <div class="sd-fullpage-hero">
+                <p class="sd-fullpage-kicker">Enrolled Course</p>
+                <h2 id="sd-course-view-title">Course Title</h2>
+                <p id="sd-course-view-description" class="sd-fullpage-description"></p>
+            </div>
+            <div class="sd-fullpage-content">
+                <h3 class="sd-fullpage-section-title"><i class="fa-solid fa-book-open"></i> Chapters</h3>
+                <div id="sd-course-view-chapters" class="sd-chapters-list"></div>
+            </div>
+        </div>
+    </div>
+
     <script src="student_dashboard.js"></script>
 </body>
 </html>

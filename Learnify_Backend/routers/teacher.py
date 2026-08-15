@@ -247,7 +247,8 @@ def get_my_courses(
             Title=course.Title,
             Description=course.Description,
             Price=course.Price,
-            chapter_count=len(course.chapters)
+            chapter_count=len(course.chapters),
+            is_published=bool(getattr(course, "is_published", False)),
         )
         for course in courses
     ]
@@ -365,6 +366,7 @@ def update_course(
         Description=course.Description,
         Price=course.Price,
         chapter_count=len(course.chapters),
+        is_published=bool(getattr(course, "is_published", False)),
     )
 
 

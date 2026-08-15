@@ -107,6 +107,14 @@ def get_published_courses(
     current_user: models.AppUser = Depends(get_current_user),
 ):
     _require_student(current_user)
+    student = _get_student_profile(db, current_user)
+
+    enrolled_ids = {
+        row.Course_ID
+        for row in db.query(models.Enrollment.Course_ID)
+        .filter(models.Enrollment.Student_ID == student.Student_ID)
+        .all()
+    }
 
     courses = (
         db.query(models.Course)
@@ -127,6 +135,7 @@ def get_published_courses(
             is_published=True,
         )
         for course in courses
+        if course.Course_ID not in enrolled_ids
     ]
 
 
@@ -226,6 +235,15 @@ def get_my_enrolled_courses(
         if enrollment.Enrollment_Date is not None:
             enrollment_date = enrollment.Enrollment_Date.isoformat()
 
+        existing_rating = (
+            db.query(models.CourseRating)
+            .filter(
+                models.CourseRating.Student_ID == student.Student_ID,
+                models.CourseRating.Course_ID == course.Course_ID,
+            )
+            .first()
+        )
+
         results.append(
             schema.StudentEnrolledCourseResponse(
                 Course_ID=course.Course_ID,
@@ -235,8 +253,76 @@ def get_my_enrolled_courses(
                 Teacher_Name=_teacher_name(course),
                 Enrollment_ID=enrollment.Enrollment_ID,
                 Enrollment_Date=enrollment_date,
+                Rating_Stars=existing_rating.Rating_Stars if existing_rating else None,
                 chapters=_build_chapter_details(course),
             )
         )
 
     return results
+
+
+# ====================================================================================
+# 4) POST /student/rate-course/{course_id} — enrolled students only
+# ====================================================================================
+@router.post(
+    "/rate-course/{course_id}",
+    response_model=schema.StudentCourseRatingResponse,
+    status_code=status.HTTP_200_OK,
+)
+def rate_enrolled_course(
+    course_id: int,
+    payload: schema.StudentCourseRatingRequest,
+    db: Session = Depends(get_db),
+    current_user: models.AppUser = Depends(get_current_user),
+):
+    _require_student(current_user)
+    student = _get_student_profile(db, current_user)
+
+    stars = int(payload.Rating_Stars)
+    if stars < 1 or stars > 5:
+        raise HTTPException(status_code=400, detail="Rating must be between 1 and 5 stars.")
+
+    enrollment = (
+        db.query(models.Enrollment)
+        .filter(
+            models.Enrollment.Student_ID == student.Student_ID,
+            models.Enrollment.Course_ID == course_id,
+        )
+        .first()
+    )
+    if not enrollment:
+        raise HTTPException(
+            status_code=403,
+            detail="You can only rate courses you are enrolled in.",
+        )
+
+    rating = (
+        db.query(models.CourseRating)
+        .filter(
+            models.CourseRating.Student_ID == student.Student_ID,
+            models.CourseRating.Course_ID == course_id,
+        )
+        .first()
+    )
+    if rating:
+        rating.Rating_Stars = stars
+        if payload.Comment is not None:
+            rating.Comment = payload.Comment
+    else:
+        rating = models.CourseRating(
+            Student_ID=student.Student_ID,
+            Course_ID=course_id,
+            Rating_Stars=stars,
+            Comment=payload.Comment,
+        )
+        db.add(rating)
+
+    db.commit()
+    db.refresh(rating)
+
+    return schema.StudentCourseRatingResponse(
+        status="Success",
+        message="Course rating saved successfully.",
+        Course_ID=course_id,
+        Rating_Stars=rating.Rating_Stars,
+    )

@@ -644,6 +644,91 @@
         }
     }
 
+    function updatePublishButtonUI(card, isPublished) {
+        const badge = card.querySelector(".tc-publish-status-badge");
+        const publishBtn = card.querySelector(".tc-btn-publish-course");
+        const published = Boolean(isPublished);
+
+        if (badge) {
+            badge.dataset.published = published ? "true" : "false";
+            badge.textContent = published ? "Published" : "Draft";
+        }
+        if (publishBtn) {
+            publishBtn.dataset.published = published ? "true" : "false";
+            publishBtn.innerHTML = published
+                ? `<i class="fa-solid fa-cloud-arrow-down"></i> Unpublish`
+                : `<i class="fa-solid fa-cloud-arrow-up"></i> Publish`;
+            publishBtn.classList.toggle("tc-btn-published", published);
+        }
+    }
+
+    async function togglePublishCourse(course, card, publishBtn) {
+        if (!course || !course.Course_ID) return;
+
+        const token = getToken();
+        if (!token) {
+            alert("Please log in again to publish a course.");
+            return;
+        }
+
+        const currentlyPublished = Boolean(course.is_published);
+        const nextPublished = !currentlyPublished;
+        const actionLabel = nextPublished ? "Publish" : "Unpublish";
+
+        if (
+            !window.confirm(
+                `${actionLabel} "${course.Title || "this course"}"?\n\n${
+                    nextPublished
+                        ? "Students will be able to see and enroll in this course."
+                        : "The course will be hidden from the student catalog."
+                }`
+            )
+        ) {
+            return;
+        }
+
+        const originalHtml = publishBtn ? publishBtn.innerHTML : "";
+        if (publishBtn) {
+            publishBtn.disabled = true;
+            publishBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Saving...`;
+        }
+
+        try {
+            const response = await fetch(
+                `${API_BASE_URL}/teacher/publish-course/${course.Course_ID}`,
+                {
+                    method: "PUT",
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({ is_published: nextPublished }),
+                }
+            );
+
+            if (!response.ok) {
+                let detail = `Publish failed (${response.status})`;
+                try {
+                    const err = await response.json();
+                    detail = err.detail || detail;
+                } catch (_) {}
+                throw new Error(detail);
+            }
+
+            const data = await response.json();
+            course.is_published = Boolean(data.is_published);
+            updatePublishButtonUI(card, course.is_published);
+            alert(data.message || `Course successfully ${course.is_published ? "published" : "unpublished"}.`);
+        } catch (err) {
+            console.error(err);
+            alert(`❌ ${err.message}`);
+            if (publishBtn) publishBtn.innerHTML = originalHtml;
+            updatePublishButtonUI(card, course.is_published);
+        } finally {
+            if (publishBtn) publishBtn.disabled = false;
+        }
+    }
+
     function createCourseCard(course) {
         const card = document.createElement("article");
         card.className = "tc-course-card";
@@ -655,6 +740,7 @@
             course.Description && String(course.Description).trim()
                 ? course.Description
                 : "No description provided.";
+        const isPublished = Boolean(course.is_published);
 
         card.innerHTML = `
             <div class="tc-course-card-accent"></div>
@@ -663,6 +749,9 @@
                     <span class="tc-chapter-count">
                         <i class="fa-solid fa-layer-group"></i>
                         <span class="tc-chapter-count-value">${escapeHtml(chapterLabel)}</span>
+                    </span>
+                    <span class="tc-publish-status-badge" data-published="${isPublished ? "true" : "false"}">
+                        ${isPublished ? "Published" : "Draft"}
                     </span>
                     <span class="tc-price-badge">${escapeHtml(formatPrice(course.Price))}</span>
                 </div>
@@ -675,6 +764,13 @@
                     <button type="button" class="tc-btn tc-btn-primary tc-btn-view-details">
                         <i class="fa-solid fa-arrow-up-right-from-square"></i> View Details
                     </button>
+                    <button type="button" class="tc-btn tc-btn-publish tc-btn-publish-course" data-published="${isPublished ? "true" : "false"}">
+                        ${
+                            isPublished
+                                ? `<i class="fa-solid fa-cloud-arrow-down"></i> Unpublish`
+                                : `<i class="fa-solid fa-cloud-arrow-up"></i> Publish`
+                        }
+                    </button>
                     <button type="button" class="tc-btn tc-btn-danger tc-btn-delete-course">
                         <i class="fa-solid fa-trash"></i> Delete
                     </button>
@@ -684,6 +780,7 @@
 
         const editBtn = card.querySelector(".tc-btn-edit-info");
         const viewBtn = card.querySelector(".tc-btn-view-details");
+        const publishBtn = card.querySelector(".tc-btn-publish-course");
         const deleteBtn = card.querySelector(".tc-btn-delete-course");
 
         if (editBtn) {
@@ -696,6 +793,13 @@
             viewBtn.addEventListener("click", (e) => {
                 e.stopPropagation();
                 openCourseView(course);
+            });
+        }
+        if (publishBtn) {
+            if (isPublished) publishBtn.classList.add("tc-btn-published");
+            publishBtn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                togglePublishCourse(course, card, publishBtn);
             });
         }
         if (deleteBtn) {
