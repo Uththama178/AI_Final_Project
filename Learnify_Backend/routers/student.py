@@ -326,3 +326,129 @@ def rate_enrolled_course(
         Course_ID=course_id,
         Rating_Stars=rating.Rating_Stars,
     )
+
+
+# ====================================================================================
+# 5) POST /student/complete-course-activities
+#     Persist ALL chapter quiz activities ONLY after final course completion.
+#     Does not alter the student_activity table schema — writes rows only.
+# ====================================================================================
+@router.post(
+    "/complete-course-activities",
+    response_model=schema.StudentCourseActivitiesResponse,
+    status_code=status.HTTP_200_OK,
+)
+def save_complete_course_activities(
+    payload: schema.StudentCourseActivitiesRequest,
+    db: Session = Depends(get_db),
+    current_user: models.AppUser = Depends(get_current_user),
+):
+    _require_student(current_user)
+    student = _get_student_profile(db, current_user)
+
+    enrollment = (
+        db.query(models.Enrollment)
+        .filter(
+            models.Enrollment.Student_ID == student.Student_ID,
+            models.Enrollment.Course_ID == payload.Course_ID,
+        )
+        .first()
+    )
+    if not enrollment:
+        raise HTTPException(
+            status_code=403,
+            detail="You can only save activity for courses you are enrolled in.",
+        )
+
+    if not payload.activities:
+        raise HTTPException(status_code=400, detail="No quiz activities provided.")
+
+    course = (
+        db.query(models.Course)
+        .options(
+            joinedload(models.Course.chapters).joinedload(models.CourseChapter.quiz)
+        )
+        .filter(models.Course.Course_ID == payload.Course_ID)
+        .first()
+    )
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found.")
+
+    chapters = sorted(course.chapters or [], key=lambda c: c.Chapter_Number or 0)
+    if not chapters:
+        raise HTTPException(status_code=400, detail="Course has no chapters.")
+
+    # Allowed quiz IDs for this course
+    course_quiz_ids = {
+        chapter.quiz.Quiz_ID
+        for chapter in chapters
+        if chapter.quiz is not None
+    }
+    if not course_quiz_ids:
+        raise HTTPException(status_code=400, detail="Course has no quizzes to save.")
+
+    # Require activities for every chapter quiz (full-course completion dump)
+    submitted_quiz_ids = {item.Quiz_ID for item in payload.activities}
+    missing = course_quiz_ids - submitted_quiz_ids
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail="All chapter quiz results must be submitted together at final course completion.",
+        )
+
+    extra = submitted_quiz_ids - course_quiz_ids
+    if extra:
+        raise HTTPException(
+            status_code=400,
+            detail="One or more quizzes do not belong to this course.",
+        )
+
+    saved_count = 0
+    for item in payload.activities:
+        marks = int(item.Marks_Obtained)
+        time_spent = max(0, int(item.Time_Spent_Minutes))
+        attendance = int(item.Attendance_Percentage)
+
+        if marks < 0 or marks > 100:
+            raise HTTPException(
+                status_code=400,
+                detail="Marks_Obtained must be between 0 and 100.",
+            )
+        if attendance < 0 or attendance > 100:
+            raise HTTPException(
+                status_code=400,
+                detail="Attendance_Percentage must be between 0 and 100.",
+            )
+
+        existing = (
+            db.query(models.StudentActivity)
+            .filter(
+                models.StudentActivity.Student_ID == student.Student_ID,
+                models.StudentActivity.Quiz_ID == item.Quiz_ID,
+            )
+            .first()
+        )
+        if existing:
+            existing.Marks_Obtained = marks
+            existing.Time_Spent_Minutes = time_spent
+            existing.Attendance_Percentage = attendance
+        else:
+            db.add(
+                models.StudentActivity(
+                    Student_ID=student.Student_ID,
+                    Quiz_ID=item.Quiz_ID,
+                    Marks_Obtained=marks,
+                    Time_Spent_Minutes=time_spent,
+                    Attendance_Percentage=attendance,
+                )
+            )
+        saved_count += 1
+
+    db.commit()
+
+    return schema.StudentCourseActivitiesResponse(
+        status="Success",
+        message="Course quiz activities saved to student_activity after final chapter completion.",
+        Course_ID=payload.Course_ID,
+        saved_count=saved_count,
+    )

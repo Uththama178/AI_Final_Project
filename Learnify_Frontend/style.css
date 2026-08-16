@@ -3164,3 +3164,85 @@ body.sd-overlay-open {
     color: #fca5a5;
 }
 
+/* Finished Courses table (student dashboard) */
+.student-finished-wrap {
+    width: 100%;
+    min-height: 180px;
+}
+
+.student-table-responsive {
+    width: 100%;
+    overflow-x: auto;
+    border-radius: 14px;
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    background: rgba(7, 11, 20, 0.45);
+}
+
+.student-finished-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 720px;
+}
+
+.student-finished-table th,
+.student-finished-table td {
+    padding: 14px 16px;
+    text-align: left;
+    vertical-align: top;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+    font-size: 13px;
+    color: #e2e8f0;
+}
+
+.student-finished-table th {
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #93c5fd;
+    background: rgba(15, 23, 42, 0.85);
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.student-finished-table tbody tr:hover {
+    background: rgba(59, 130, 246, 0.08);
+}
+
+.student-finished-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+@media (max-width: 720px) {
+    .student-finished-table {
+        min-width: 0;
+    }
+
+    .student-finished-table thead {
+        display: none;
+    }
+
+    .student-finished-table tr {
+        display: block;
+        padding: 12px 0;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+    }
+
+    .student-finished-table td {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        border-bottom: none;
+        padding: 8px 14px;
+    }
+
+    .student-finished-table td::before {
+        content: attr(data-label);
+        color: #93c5fd;
+        font-weight: 700;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        flex: 0 0 42%;
+    }
+}
+

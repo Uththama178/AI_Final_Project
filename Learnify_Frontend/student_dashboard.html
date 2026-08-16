@@ -126,10 +126,24 @@
                             <h2><i class="fa-solid fa-flag-checkered"></i> Finished Courses</h2>
                             <p>Courses you have completed successfully.</p>
                         </div>
-                        <div class="student-courses-grid" id="finish-courses-container">
+                        <div class="student-finished-wrap" id="finish-courses-container">
                             <div class="student-empty-state" id="finish-courses-empty">
                                 <i class="fa-solid fa-flag-checkered"></i>
                                 <p>No finished courses yet. Keep learning!</p>
+                            </div>
+                            <div class="student-table-responsive" id="finish-courses-table-wrap" hidden>
+                                <table class="student-finished-table" id="finish-courses-table">
+                                    <thead>
+                                        <tr>
+                                            <th scope="col">Course Name</th>
+                                            <th scope="col">Teacher</th>
+                                            <th scope="col">Chapter-wise Marks</th>
+                                            <th scope="col">Course Start Date</th>
+                                            <th scope="col">Course End Date</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="finish-courses-tbody"></tbody>
+                                </table>
                             </div>
                         </div>
                     </div>

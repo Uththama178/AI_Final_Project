@@ -194,3 +194,23 @@ class StudentCourseRatingResponse(BaseModel):
     Course_ID: int
     Rating_Stars: int
 
+
+# Course-completion activity dump (written only after final chapter quiz)
+class StudentActivityItem(BaseModel):
+    Quiz_ID: int
+    Marks_Obtained: int
+    Time_Spent_Minutes: int
+    Attendance_Percentage: int = 100
+
+
+class StudentCourseActivitiesRequest(BaseModel):
+    Course_ID: int
+    activities: List[StudentActivityItem]
+
+
+class StudentCourseActivitiesResponse(BaseModel):
+    status: str
+    message: str
+    Course_ID: int
+    saved_count: int
+

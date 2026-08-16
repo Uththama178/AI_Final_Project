@@ -68,6 +68,8 @@ document.addEventListener("DOMContentLoaded", function () {
                 loadAvailableCourses();
             } else if (tabId === "my-courses") {
                 loadMyCourses();
+            } else if (tabId === "finish-courses") {
+                loadFinishedCourses();
             }
         });
     });
@@ -459,8 +461,23 @@ document.addEventListener("DOMContentLoaded", function () {
 
             if (empty) empty.hidden = true;
             enrolledCoursesCache.forEach((course) => {
+                // Finished courses move to the Finished Courses table
+                if (isCourseFullyCompleted(course)) return;
                 container.appendChild(createMyCourseCard(course));
             });
+
+            if (!container.querySelector(".sd-course-card")) {
+                ensureEmptyState(
+                    container,
+                    "my-courses-empty",
+                    "fa-bookmark",
+                    enrolledCoursesCache.length
+                        ? "All enrolled courses are finished. Check the Finished Courses tab."
+                        : "You have not enrolled in any courses yet."
+                );
+            }
+
+            loadFinishedCourses({ silent: true });
         } catch (err) {
             console.error(err);
             if (!options.silent) {
@@ -475,9 +492,99 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     // ------------------------------------------
+    // Finished Courses — table view (all chapters done)
+    // ------------------------------------------
+    function formatDisplayDate(value) {
+        if (!value) return "—";
+        const d = new Date(value);
+        if (Number.isNaN(d.getTime())) {
+            const asText = String(value).trim();
+            return asText || "—";
+        }
+        return d.toLocaleDateString(undefined, {
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+        });
+    }
+
+    function formatChapterWiseMarks(course, progress) {
+        const chapters = getSortedChapters(course);
+        if (!chapters.length) return "—";
+
+        return chapters
+            .map((ch, idx) => {
+                const label = `Ch${ch.Chapter_Number || idx + 1}`;
+                const local = progress.quizResults[String(ch.Chapter_ID)];
+                if (local && local.Marks_Obtained != null && !Number.isNaN(Number(local.Marks_Obtained))) {
+                    return `${label}: ${Number(local.Marks_Obtained)}%`;
+                }
+                if (isChapterComplete(progress, ch.Chapter_ID)) {
+                    return `${label}: Done`;
+                }
+                return `${label}: —`;
+            })
+            .join(" · ");
+    }
+
+    function loadFinishedCourses(options = {}) {
+        const container = document.getElementById("finish-courses-container");
+        const empty = document.getElementById("finish-courses-empty");
+        const tableWrap = document.getElementById("finish-courses-table-wrap");
+        const tbody = document.getElementById("finish-courses-tbody");
+        if (!container || !tbody) return;
+
+        const finished = (enrolledCoursesCache || []).filter((course) => isCourseFullyCompleted(course));
+
+        tbody.innerHTML = "";
+
+        if (!finished.length) {
+            if (tableWrap) tableWrap.hidden = true;
+            if (empty) {
+                empty.hidden = false;
+                empty.innerHTML = `<i class="fa-solid fa-flag-checkered"></i><p>No finished courses yet. Keep learning!</p>`;
+            }
+            return;
+        }
+
+        if (empty) empty.hidden = true;
+        if (tableWrap) tableWrap.hidden = false;
+
+        finished.forEach((course) => {
+            let progress = loadChapterProgress(course.Course_ID);
+            if (!progress.completedAt) {
+                progress = markCourseFinished(course.Course_ID);
+            }
+            if (!progress.startedAt && course.Enrollment_Date) {
+                progress = ensureCourseStartedAt(course.Course_ID, course.Enrollment_Date);
+            }
+
+            const startDate = progress.startedAt || course.Enrollment_Date || null;
+            const endDate = progress.completedAt || null;
+
+            const tr = document.createElement("tr");
+            tr.dataset.courseId = course.Course_ID;
+            tr.innerHTML = `
+                <td data-label="Course Name">${escapeHtml(course.Title || "Untitled Course")}</td>
+                <td data-label="Teacher">${escapeHtml(course.Teacher_Name || "Unknown Teacher")}</td>
+                <td data-label="Chapter-wise Marks">${escapeHtml(formatChapterWiseMarks(course, progress))}</td>
+                <td data-label="Course Start Date">${escapeHtml(formatDisplayDate(startDate))}</td>
+                <td data-label="Course End Date">${escapeHtml(formatDisplayDate(endDate))}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        if (!options.silent) {
+            console.log(`Finished courses loaded: ${finished.length}`);
+        }
+    }
+
+    // ------------------------------------------
     // Enrolled course content overlay (chapter-by-chapter)
+    // Interactive MCQs unlock locally; DB save only on FINAL chapter quiz.
     // ------------------------------------------
     let activeCourseView = null;
+    const chapterTimers = {}; // chapterId -> start timestamp (ms)
 
     function chapterProgressKey(courseId) {
         const who = (displayEmail || displayName || "student").toLowerCase();
@@ -487,15 +594,36 @@ document.addEventListener("DOMContentLoaded", function () {
     function loadChapterProgress(courseId) {
         try {
             const raw = localStorage.getItem(chapterProgressKey(courseId));
-            if (!raw) return { completedChapterIds: [] };
+            if (!raw) {
+                return {
+                    completedChapterIds: [],
+                    quizResults: {},
+                    dbSynced: false,
+                    startedAt: null,
+                    completedAt: null,
+                };
+            }
             const parsed = JSON.parse(raw);
             return {
                 completedChapterIds: Array.isArray(parsed.completedChapterIds)
                     ? parsed.completedChapterIds.map(Number)
                     : [],
+                quizResults:
+                    parsed.quizResults && typeof parsed.quizResults === "object"
+                        ? parsed.quizResults
+                        : {},
+                dbSynced: Boolean(parsed.dbSynced),
+                startedAt: parsed.startedAt || null,
+                completedAt: parsed.completedAt || null,
             };
         } catch (_) {
-            return { completedChapterIds: [] };
+            return {
+                completedChapterIds: [],
+                quizResults: {},
+                dbSynced: false,
+                startedAt: null,
+                completedAt: null,
+            };
         }
     }
 
@@ -506,8 +634,41 @@ document.addEventListener("DOMContentLoaded", function () {
                 completedChapterIds: Array.isArray(progress.completedChapterIds)
                     ? progress.completedChapterIds
                     : [],
+                quizResults: progress.quizResults || {},
+                dbSynced: Boolean(progress.dbSynced),
+                startedAt: progress.startedAt || null,
+                completedAt: progress.completedAt || null,
             })
         );
+    }
+
+    function ensureCourseStartedAt(courseId, enrollmentDate) {
+        const progress = loadChapterProgress(courseId);
+        if (!progress.startedAt) {
+            progress.startedAt = enrollmentDate || new Date().toISOString();
+            saveChapterProgress(courseId, progress);
+        }
+        return progress;
+    }
+
+    function markCourseFinished(courseId) {
+        const progress = loadChapterProgress(courseId);
+        if (!progress.completedAt) {
+            progress.completedAt = new Date().toISOString();
+        }
+        if (!progress.startedAt) {
+            progress.startedAt = new Date().toISOString();
+        }
+        saveChapterProgress(courseId, progress);
+        return progress;
+    }
+
+    function isCourseFullyCompleted(course) {
+        if (!course || !course.Course_ID) return false;
+        const chapters = getSortedChapters(course);
+        if (!chapters.length) return false;
+        const progress = loadChapterProgress(course.Course_ID);
+        return chapters.every((ch) => isChapterComplete(progress, ch.Chapter_ID));
     }
 
     function markChapterComplete(courseId, chapterId) {
@@ -520,8 +681,36 @@ document.addEventListener("DOMContentLoaded", function () {
         return progress;
     }
 
+    function storeLocalQuizResult(courseId, chapterId, result) {
+        const progress = loadChapterProgress(courseId);
+        progress.quizResults[String(chapterId)] = result;
+        saveChapterProgress(courseId, progress);
+        return progress;
+    }
+
     function isChapterComplete(progress, chapterId) {
         return progress.completedChapterIds.includes(Number(chapterId));
+    }
+
+    function isFinalChapterIndex(chapters, index) {
+        return Array.isArray(chapters) && chapters.length > 0 && index === chapters.length - 1;
+    }
+
+    function getChapterIndex(chapters, chapterId) {
+        return chapters.findIndex((ch) => Number(ch.Chapter_ID) === Number(chapterId));
+    }
+
+    function startChapterTimer(chapterId) {
+        const id = String(chapterId);
+        if (!chapterTimers[id]) {
+            chapterTimers[id] = Date.now();
+        }
+    }
+
+    function getChapterTimeSpentMinutes(chapterId) {
+        const started = chapterTimers[String(chapterId)];
+        if (!started) return 1;
+        return Math.max(1, Math.round((Date.now() - started) / 60000));
     }
 
     function getSortedChapters(course) {
@@ -592,14 +781,16 @@ document.addEventListener("DOMContentLoaded", function () {
         return mediaHtml;
     }
 
-    function buildInteractiveQuizHtml(ch) {
+    function buildInteractiveQuizHtml(ch, isFinal) {
         const quiz = ch.quiz;
         if (!quiz) {
             return `
                 <div class="sd-chapter-quiz">
                     <p class="sd-media-note muted">No quiz for this chapter. Mark it complete to continue.</p>
                     <button type="button" class="sd-btn sd-btn-complete-chapter" data-chapter-id="${ch.Chapter_ID}">
-                        <i class="fa-solid fa-check"></i> Mark Chapter Complete
+                        <i class="fa-solid fa-check"></i> ${
+                            isFinal ? "Complete Course" : "Mark Chapter Complete"
+                        }
                     </button>
                 </div>`;
         }
@@ -611,7 +802,9 @@ document.addEventListener("DOMContentLoaded", function () {
                     <h4><i class="fa-solid fa-list-check"></i> ${escapeHtml(quiz.Quiz_Title || "Chapter Quiz")}</h4>
                     <p class="sd-media-note muted">No questions in this quiz yet.</p>
                     <button type="button" class="sd-btn sd-btn-complete-chapter" data-chapter-id="${ch.Chapter_ID}">
-                        <i class="fa-solid fa-check"></i> Mark Chapter Complete
+                        <i class="fa-solid fa-check"></i> ${
+                            isFinal ? "Complete Course" : "Mark Chapter Complete"
+                        }
                     </button>
                 </div>`;
         }
@@ -644,8 +837,14 @@ document.addEventListener("DOMContentLoaded", function () {
         return `
             <div class="sd-chapter-quiz" data-quiz-id="${quiz.Quiz_ID || ""}">
                 <h4><i class="fa-solid fa-list-check"></i> ${escapeHtml(quiz.Quiz_Title || "Chapter Quiz")}</h4>
-                <p class="sd-quiz-instruction">Answer all questions, then submit to unlock the next chapter.</p>
-                <form class="sd-quiz-form" data-chapter-id="${ch.Chapter_ID}">
+                <p class="sd-quiz-instruction">
+                    ${
+                        isFinal
+                            ? "Answer all questions and submit to finish the course. Marks are saved to the database only after this final quiz."
+                            : "Answer all questions, then submit to unlock the next chapter. Marks stay local until you finish the final chapter."
+                    }
+                </p>
+                <form class="sd-quiz-form" data-chapter-id="${ch.Chapter_ID}" data-quiz-id="${quiz.Quiz_ID || ""}">
                     ${questionsHtml}
                     <div class="sd-quiz-actions">
                         <button type="submit" class="sd-btn sd-btn-submit-quiz">
@@ -671,19 +870,30 @@ document.addEventListener("DOMContentLoaded", function () {
         }
 
         const activeIndex = firstUnlockedIncompleteIndex(chapters, progress);
+        const allDone =
+            chapters.length > 0 &&
+            chapters.every((ch) => isChapterComplete(progress, ch.Chapter_ID));
 
         chaptersEl.innerHTML = `
             <p class="sd-chapter-progress-note">
-                Complete each chapter quiz to unlock the next one.
+                Complete each chapter quiz to unlock the next one. Database save happens only after the final chapter quiz.
+                ${
+                    progress.dbSynced
+                        ? ' <span class="sd-chip sd-chip-enrolled">Course results saved</span>'
+                        : ""
+                }
             </p>
             <div class="sd-chapter-stepper" id="sd-chapter-stepper">
                 ${chapters
                     .map((ch, index) => {
                         const unlocked = isChapterUnlocked(chapters, progress, index);
                         const completed = isChapterComplete(progress, ch.Chapter_ID);
-                        const isOpen = unlocked && index === activeIndex;
+                        const isFinal = isFinalChapterIndex(chapters, index);
+                        const isOpen = unlocked && (allDone ? isFinal : index === activeIndex);
                         const statusLabel = completed
-                            ? "Completed"
+                            ? isFinal
+                                ? "Course completed"
+                                : "Completed"
                             : unlocked
                               ? "In progress"
                               : "Locked";
@@ -692,6 +902,27 @@ document.addEventListener("DOMContentLoaded", function () {
                             : unlocked
                               ? "fa-unlock"
                               : "fa-lock";
+
+                        let completedQuizHtml = `
+                            <div class="sd-chapter-quiz">
+                                <p class="sd-quiz-result is-success">
+                                    <i class="fa-solid fa-circle-check"></i>
+                                    ${
+                                        isFinal
+                                            ? progress.dbSynced
+                                                ? "Final quiz completed. All chapter marks were saved for risk prediction."
+                                                : "Final quiz completed locally. Database save pending."
+                                            : "Chapter quiz completed. Next chapter is unlocked (marks kept locally)."
+                                    }
+                                </p>
+                                ${
+                                    isFinal && !progress.dbSynced
+                                        ? `<button type="button" class="sd-btn sd-btn-submit-quiz sd-btn-retry-save" data-course-id="${course.Course_ID}">
+                                                <i class="fa-solid fa-cloud-arrow-up"></i> Save Results to Database
+                                           </button>`
+                                        : ""
+                                }
+                            </div>`;
 
                         return `
                             <article
@@ -723,13 +954,8 @@ document.addEventListener("DOMContentLoaded", function () {
                                         unlocked
                                             ? `${buildChapterMediaHtml(ch)}${
                                                   completed
-                                                      ? `<div class="sd-chapter-quiz">
-                                                            <p class="sd-quiz-result is-success">
-                                                                <i class="fa-solid fa-circle-check"></i>
-                                                                Chapter quiz completed. Next chapter is unlocked.
-                                                            </p>
-                                                         </div>`
-                                                      : buildInteractiveQuizHtml(ch)
+                                                      ? completedQuizHtml
+                                                      : buildInteractiveQuizHtml(ch, isFinal)
                                               }`
                                             : `<div class="sd-chapter-locked-msg">
                                                     <i class="fa-solid fa-lock"></i>
@@ -743,7 +969,11 @@ document.addEventListener("DOMContentLoaded", function () {
             </div>`;
 
         bindChapterStepperEvents(chaptersEl, course);
-        activateChapterVideos(chaptersEl.querySelector(".sd-chapter-step.is-open"));
+        const openStep = chaptersEl.querySelector(".sd-chapter-step.is-open");
+        if (openStep) {
+            startChapterTimer(openStep.dataset.chapterId);
+            activateChapterVideos(openStep);
+        }
     }
 
     function activateChapterVideos(stepEl) {
@@ -769,6 +999,7 @@ document.addEventListener("DOMContentLoaded", function () {
             if (panel) panel.hidden = !isTarget;
             if (toggle) toggle.setAttribute("aria-expanded", isTarget ? "true" : "false");
         });
+        startChapterTimer(stepEl.dataset.chapterId);
         activateChapterVideos(stepEl);
         stepEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
@@ -787,7 +1018,10 @@ document.addEventListener("DOMContentLoaded", function () {
                         panel.hidden = willHide;
                         step.classList.toggle("is-open", !willHide);
                         btn.setAttribute("aria-expanded", willHide ? "false" : "true");
-                        if (!willHide) activateChapterVideos(step);
+                        if (!willHide) {
+                            startChapterTimer(step.dataset.chapterId);
+                            activateChapterVideos(step);
+                        }
                     }
                     return;
                 }
@@ -798,7 +1032,25 @@ document.addEventListener("DOMContentLoaded", function () {
         chaptersEl.querySelectorAll(".sd-btn-complete-chapter").forEach((btn) => {
             btn.addEventListener("click", () => {
                 const chapterId = Number(btn.dataset.chapterId);
-                completeChapterAndRefresh(course, chapterId, "Chapter marked complete. Next chapter unlocked.");
+                finalizeChapterProgress(course, chapterId, null);
+            });
+        });
+
+        chaptersEl.querySelectorAll(".sd-btn-retry-save").forEach((btn) => {
+            btn.addEventListener("click", async () => {
+                btn.disabled = true;
+                btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Saving...`;
+                try {
+                    const saveResult = await persistFinalCourseActivities(course);
+                    const saved = saveResult && saveResult.saved_count != null ? saveResult.saved_count : 0;
+                    alert(`Saved ${saved} chapter quiz record(s) to the database.`);
+                    renderChapterStepper(course);
+                } catch (err) {
+                    console.error(err);
+                    alert(`❌ ${err.message}`);
+                    btn.disabled = false;
+                    btn.innerHTML = `<i class="fa-solid fa-cloud-arrow-up"></i> Save Results to Database`;
+                }
             });
         });
 
@@ -810,16 +1062,8 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     }
 
-    function handleQuizSubmit(form, course) {
-        const chapterId = Number(form.dataset.chapterId);
+    function scoreQuizForm(form) {
         const questions = Array.from(form.querySelectorAll(".sd-quiz-question"));
-        const resultEl = form.querySelector(".sd-quiz-result");
-
-        if (!questions.length) {
-            completeChapterAndRefresh(course, chapterId, "Chapter completed.");
-            return;
-        }
-
         let unanswered = 0;
         let correct = 0;
 
@@ -842,47 +1086,157 @@ document.addEventListener("DOMContentLoaded", function () {
             }
         });
 
-        if (unanswered > 0) {
+        const total = questions.length;
+        const percent = total ? Math.round((correct / total) * 100) : 0;
+        return { questions, unanswered, correct, total, percent, passed: total === 0 || percent >= 50 };
+    }
+
+    function buildActivitiesPayload(course, progress) {
+        const chapters = getSortedChapters(course);
+        const activities = [];
+
+        chapters.forEach((ch) => {
+            const quiz = ch.quiz;
+            if (!quiz || !quiz.Quiz_ID) return;
+            const local = progress.quizResults[String(ch.Chapter_ID)];
+            if (!local) return;
+            activities.push({
+                Quiz_ID: Number(local.Quiz_ID || quiz.Quiz_ID),
+                Marks_Obtained: Number(local.Marks_Obtained),
+                Time_Spent_Minutes: Number(local.Time_Spent_Minutes || 1),
+                Attendance_Percentage: Number(local.Attendance_Percentage || 100),
+            });
+        });
+
+        return {
+            Course_ID: course.Course_ID,
+            activities,
+        };
+    }
+
+    async function persistFinalCourseActivities(course) {
+        const progress = loadChapterProgress(course.Course_ID);
+        if (progress.dbSynced) {
+            return { alreadySaved: true, saved_count: 0 };
+        }
+
+        const payload = buildActivitiesPayload(course, progress);
+        if (!payload.activities.length) {
+            progress.dbSynced = true;
+            saveChapterProgress(course.Course_ID, progress);
+            return { alreadySaved: false, saved_count: 0, skipped: true };
+        }
+
+        const data = await apiJson(`${API_BASE_URL}/student/complete-course-activities`, {
+            method: "POST",
+            body: JSON.stringify(payload),
+        });
+
+        progress.dbSynced = true;
+        saveChapterProgress(course.Course_ID, progress);
+        return data;
+    }
+
+    async function finalizeChapterProgress(course, chapterId, quizResult) {
+        const chapters = getSortedChapters(course);
+        const index = getChapterIndex(chapters, chapterId);
+        const isFinal = isFinalChapterIndex(chapters, index);
+
+        if (quizResult) {
+            storeLocalQuizResult(course.Course_ID, chapterId, quizResult);
+        }
+
+        markChapterComplete(course.Course_ID, chapterId);
+
+        if (!isFinal) {
+            alert(
+                quizResult
+                    ? `Quiz completed (${quizResult.correct}/${quizResult.total}). Next chapter unlocked. Marks kept locally until the final chapter.`
+                    : "Chapter marked complete. Next chapter unlocked."
+            );
+            renderChapterStepper(course);
+            return;
+        }
+
+        // FINAL chapter — mark course finished for the Finished Courses table
+        markCourseFinished(course.Course_ID);
+
+        // FINAL chapter only — send ALL aggregated chapter activities to student_activity
+        try {
+            const saveResult = await persistFinalCourseActivities(course);
+            const saved = saveResult && saveResult.saved_count != null ? saveResult.saved_count : 0;
+            if (saveResult && saveResult.skipped) {
+                alert("Course completed. No quiz marks to save.");
+            } else if (saveResult && saveResult.alreadySaved) {
+                alert("Course already completed. Results were previously saved.");
+            } else {
+                alert(
+                    `Course completed! ${saved} chapter quiz record(s) saved to the database for risk prediction.`
+                );
+            }
+        } catch (err) {
+            console.error(err);
+            alert(
+                `Final quiz completed locally, but saving marks failed: ${err.message}\nUse "Save Results to Database" to retry.`
+            );
+        }
+
+        renderChapterStepper(course);
+        loadFinishedCourses({ silent: true });
+        loadMyCourses({ silent: true });
+    }
+
+    async function handleQuizSubmit(form, course) {
+        const chapterId = Number(form.dataset.chapterId);
+        const quizId = Number(form.dataset.quizId);
+        const resultEl = form.querySelector(".sd-quiz-result");
+        const scored = scoreQuizForm(form);
+
+        if (!scored.total) {
+            await finalizeChapterProgress(course, chapterId, null);
+            return;
+        }
+
+        if (scored.unanswered > 0) {
             if (resultEl) {
                 resultEl.hidden = false;
                 resultEl.className = "sd-quiz-result is-error";
-                resultEl.innerHTML = `<i class="fa-solid fa-circle-exclamation"></i> Please answer all ${questions.length} questions before submitting.`;
+                resultEl.innerHTML = `<i class="fa-solid fa-circle-exclamation"></i> Please answer all ${scored.total} questions before submitting.`;
             }
             return;
         }
 
-        const total = questions.length;
-        const percent = Math.round((correct / total) * 100);
-        const passed = percent >= 50;
-
         if (resultEl) {
             resultEl.hidden = false;
-            resultEl.className = `sd-quiz-result ${passed ? "is-success" : "is-error"}`;
-            resultEl.innerHTML = passed
-                ? `<i class="fa-solid fa-circle-check"></i> Quiz submitted: ${correct}/${total} correct (${percent}%). Chapter unlocked for progress.`
-                : `<i class="fa-solid fa-circle-exclamation"></i> Score ${correct}/${total} (${percent}%). You need at least 50% to unlock the next chapter. Try again.`;
+            resultEl.className = `sd-quiz-result ${scored.passed ? "is-success" : "is-error"}`;
+            resultEl.innerHTML = scored.passed
+                ? `<i class="fa-solid fa-circle-check"></i> Quiz submitted: ${scored.correct}/${scored.total} correct (${scored.percent}%).`
+                : `<i class="fa-solid fa-circle-exclamation"></i> Score ${scored.correct}/${scored.total} (${scored.percent}%). You need at least 50% to continue. Try again.`;
         }
 
-        if (!passed) return;
+        if (!scored.passed) return;
 
-        // Disable further edits after successful submit
         form.querySelectorAll("input[type='radio']").forEach((input) => {
             input.disabled = true;
         });
         const submitBtn = form.querySelector(".sd-btn-submit-quiz");
-        if (submitBtn) submitBtn.disabled = true;
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Saving...`;
+        }
 
-        completeChapterAndRefresh(
-            course,
-            chapterId,
-            `Quiz completed (${correct}/${total}). Next chapter unlocked.`
-        );
-    }
+        const quizResult = {
+            Quiz_ID: quizId,
+            Chapter_ID: chapterId,
+            correct: scored.correct,
+            total: scored.total,
+            Marks_Obtained: scored.percent,
+            Time_Spent_Minutes: getChapterTimeSpentMinutes(chapterId),
+            Attendance_Percentage: 100,
+        };
 
-    function completeChapterAndRefresh(course, chapterId, message) {
-        markChapterComplete(course.Course_ID, chapterId);
-        if (message) alert(message);
-        renderChapterStepper(course);
+        // Chapters 1..n-1: local only. Final chapter: aggregate + DB save inside finalize.
+        await finalizeChapterProgress(course, chapterId, quizResult);
     }
 
     function ensureStudentCourseOverlay() {
@@ -961,6 +1315,7 @@ document.addEventListener("DOMContentLoaded", function () {
         }
         if (priceEl) priceEl.textContent = formatPrice(course.Price);
 
+        ensureCourseStartedAt(course.Course_ID, course.Enrollment_Date || null);
         renderChapterStepper(course);
 
         overlay.classList.add("is-open");
@@ -977,6 +1332,7 @@ document.addEventListener("DOMContentLoaded", function () {
         getAuthHeaders,
         loadAvailableCourses,
         loadMyCourses,
+        loadFinishedCourses,
         closeEnrolledCourseView,
     };
 
