@@ -135,7 +135,7 @@ def get_published_courses(
             is_published=True,
         )
         for course in courses
-        if course.Course_ID not in enrolled_ids
+        if course.Course_ID not in enrolled_ids #8/15#
     ]
 
 

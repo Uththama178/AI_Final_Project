@@ -475,8 +475,416 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     // ------------------------------------------
-    // Enrolled course content overlay
+    // Enrolled course content overlay (chapter-by-chapter)
     // ------------------------------------------
+    let activeCourseView = null;
+
+    function chapterProgressKey(courseId) {
+        const who = (displayEmail || displayName || "student").toLowerCase();
+        return `learnify_chapter_progress_${who}_${courseId}`;
+    }
+
+    function loadChapterProgress(courseId) {
+        try {
+            const raw = localStorage.getItem(chapterProgressKey(courseId));
+            if (!raw) return { completedChapterIds: [] };
+            const parsed = JSON.parse(raw);
+            return {
+                completedChapterIds: Array.isArray(parsed.completedChapterIds)
+                    ? parsed.completedChapterIds.map(Number)
+                    : [],
+            };
+        } catch (_) {
+            return { completedChapterIds: [] };
+        }
+    }
+
+    function saveChapterProgress(courseId, progress) {
+        localStorage.setItem(
+            chapterProgressKey(courseId),
+            JSON.stringify({
+                completedChapterIds: Array.isArray(progress.completedChapterIds)
+                    ? progress.completedChapterIds
+                    : [],
+            })
+        );
+    }
+
+    function markChapterComplete(courseId, chapterId) {
+        const progress = loadChapterProgress(courseId);
+        const id = Number(chapterId);
+        if (!progress.completedChapterIds.includes(id)) {
+            progress.completedChapterIds.push(id);
+            saveChapterProgress(courseId, progress);
+        }
+        return progress;
+    }
+
+    function isChapterComplete(progress, chapterId) {
+        return progress.completedChapterIds.includes(Number(chapterId));
+    }
+
+    function getSortedChapters(course) {
+        return (Array.isArray(course.chapters) ? course.chapters : [])
+            .slice()
+            .sort((a, b) => (a.Chapter_Number || 0) - (b.Chapter_Number || 0));
+    }
+
+    /** Chapter N is unlocked when all previous chapters are completed (quiz submitted). */
+    function isChapterUnlocked(chapters, progress, index) {
+        if (index <= 0) return true;
+        for (let i = 0; i < index; i += 1) {
+            if (!isChapterComplete(progress, chapters[i].Chapter_ID)) return false;
+        }
+        return true;
+    }
+
+    function firstUnlockedIncompleteIndex(chapters, progress) {
+        for (let i = 0; i < chapters.length; i += 1) {
+            if (
+                isChapterUnlocked(chapters, progress, i) &&
+                !isChapterComplete(progress, chapters[i].Chapter_ID)
+            ) {
+                return i;
+            }
+        }
+        return Math.max(0, chapters.length - 1);
+    }
+
+    function stopChapterVideos(root) {
+        if (!root) return;
+        root.querySelectorAll(".sd-video-wrap iframe").forEach((iframe) => {
+            iframe.src = "";
+        });
+    }
+
+    function buildChapterMediaHtml(ch) {
+        const videoEmbed = toYouTubeEmbed(ch.Video_Link_Or_Path);
+        const pdfUrl = buildPdfUrl(ch.PDF_Link_Or_Path);
+        let mediaHtml = `<div class="sd-chapter-media">`;
+
+        if (videoEmbed) {
+            mediaHtml += `
+                <div class="sd-video-wrap">
+                    <iframe data-src="${escapeHtml(videoEmbed)}" src="" title="Chapter video"
+                        allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                        allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>
+                </div>`;
+        } else if (ch.Video_Link_Or_Path) {
+            mediaHtml += `<p class="sd-media-note"><i class="fa-solid fa-video"></i> Video: ${escapeHtml(
+                ch.Video_Link_Or_Path
+            )}</p>`;
+        } else {
+            mediaHtml += `<p class="sd-media-note muted">No video for this chapter.</p>`;
+        }
+
+        if (pdfUrl) {
+            mediaHtml += `<a class="sd-btn sd-btn-pdf" href="${escapeHtml(
+                pdfUrl
+            )}" target="_blank" rel="noopener noreferrer">
+                <i class="fa-solid fa-file-pdf"></i> Open PDF
+            </a>`;
+        } else {
+            mediaHtml += `<p class="sd-media-note muted">No PDF for this chapter.</p>`;
+        }
+
+        mediaHtml += `</div>`;
+        return mediaHtml;
+    }
+
+    function buildInteractiveQuizHtml(ch) {
+        const quiz = ch.quiz;
+        if (!quiz) {
+            return `
+                <div class="sd-chapter-quiz">
+                    <p class="sd-media-note muted">No quiz for this chapter. Mark it complete to continue.</p>
+                    <button type="button" class="sd-btn sd-btn-complete-chapter" data-chapter-id="${ch.Chapter_ID}">
+                        <i class="fa-solid fa-check"></i> Mark Chapter Complete
+                    </button>
+                </div>`;
+        }
+
+        const questions = Array.isArray(quiz.questions) ? quiz.questions : [];
+        if (!questions.length) {
+            return `
+                <div class="sd-chapter-quiz">
+                    <h4><i class="fa-solid fa-list-check"></i> ${escapeHtml(quiz.Quiz_Title || "Chapter Quiz")}</h4>
+                    <p class="sd-media-note muted">No questions in this quiz yet.</p>
+                    <button type="button" class="sd-btn sd-btn-complete-chapter" data-chapter-id="${ch.Chapter_ID}">
+                        <i class="fa-solid fa-check"></i> Mark Chapter Complete
+                    </button>
+                </div>`;
+        }
+
+        const questionsHtml = questions
+            .map((q, idx) => {
+                const name = `sd-q-${ch.Chapter_ID}-${q.Question_ID || idx}`;
+                return `
+                    <div class="sd-quiz-question" data-question-id="${q.Question_ID || idx}" data-correct="${escapeHtml(
+                        String(q.Correct_Answer || "").trim().toUpperCase()
+                    )}">
+                        <p class="sd-q-text"><strong>Q${idx + 1}.</strong> ${escapeHtml(q.Question_Text || "")}</p>
+                        <div class="sd-q-options-interactive" role="radiogroup" aria-label="Question ${idx + 1}">
+                            ${["A", "B", "C", "D"]
+                                .map((letter) => {
+                                    const text = q[`Option_${letter}`] || "";
+                                    const id = `${name}-${letter}`;
+                                    return `
+                                        <label class="sd-q-option" for="${id}">
+                                            <input type="radio" id="${id}" name="${name}" value="${letter}">
+                                            <span>${letter}. ${escapeHtml(text)}</span>
+                                        </label>`;
+                                })
+                                .join("")}
+                        </div>
+                    </div>`;
+            })
+            .join("");
+
+        return `
+            <div class="sd-chapter-quiz" data-quiz-id="${quiz.Quiz_ID || ""}">
+                <h4><i class="fa-solid fa-list-check"></i> ${escapeHtml(quiz.Quiz_Title || "Chapter Quiz")}</h4>
+                <p class="sd-quiz-instruction">Answer all questions, then submit to unlock the next chapter.</p>
+                <form class="sd-quiz-form" data-chapter-id="${ch.Chapter_ID}">
+                    ${questionsHtml}
+                    <div class="sd-quiz-actions">
+                        <button type="submit" class="sd-btn sd-btn-submit-quiz">
+                            <i class="fa-solid fa-paper-plane"></i> Submit Quiz
+                        </button>
+                        <p class="sd-quiz-result" hidden></p>
+                    </div>
+                </form>
+            </div>`;
+    }
+
+    function renderChapterStepper(course) {
+        const chaptersEl = document.getElementById("sd-course-view-chapters");
+        if (!chaptersEl || !course) return;
+
+        const chapters = getSortedChapters(course);
+        const progress = loadChapterProgress(course.Course_ID);
+        activeCourseView = { course, chapters, progress };
+
+        if (!chapters.length) {
+            chaptersEl.innerHTML = `<p class="sd-inline-empty">No chapters published for this course yet.</p>`;
+            return;
+        }
+
+        const activeIndex = firstUnlockedIncompleteIndex(chapters, progress);
+
+        chaptersEl.innerHTML = `
+            <p class="sd-chapter-progress-note">
+                Complete each chapter quiz to unlock the next one.
+            </p>
+            <div class="sd-chapter-stepper" id="sd-chapter-stepper">
+                ${chapters
+                    .map((ch, index) => {
+                        const unlocked = isChapterUnlocked(chapters, progress, index);
+                        const completed = isChapterComplete(progress, ch.Chapter_ID);
+                        const isOpen = unlocked && index === activeIndex;
+                        const statusLabel = completed
+                            ? "Completed"
+                            : unlocked
+                              ? "In progress"
+                              : "Locked";
+                        const statusIcon = completed
+                            ? "fa-circle-check"
+                            : unlocked
+                              ? "fa-unlock"
+                              : "fa-lock";
+
+                        return `
+                            <article
+                                class="sd-chapter-card sd-chapter-step ${completed ? "is-completed" : ""} ${
+                                    unlocked ? "is-unlocked" : "is-locked"
+                                } ${isOpen ? "is-open" : ""}"
+                                data-chapter-id="${ch.Chapter_ID}"
+                                data-chapter-index="${index}"
+                                data-unlocked="${unlocked ? "true" : "false"}"
+                            >
+                                <button type="button" class="sd-chapter-toggle" ${unlocked ? "" : "disabled"} aria-expanded="${
+                                    isOpen ? "true" : "false"
+                                }">
+                                    <span class="sd-chapter-header">
+                                        <span class="sd-chapter-num">${escapeHtml(
+                                            String(ch.Chapter_Number || index + 1)
+                                        )}</span>
+                                        <span class="sd-chapter-toggle-text">
+                                            <h4>${escapeHtml(ch.Chapter_Title || `Chapter ${index + 1}`)}</h4>
+                                            <small class="sd-chapter-status">
+                                                <i class="fa-solid ${statusIcon}"></i> ${statusLabel}
+                                            </small>
+                                        </span>
+                                    </span>
+                                    <i class="fa-solid fa-chevron-down sd-chapter-chevron"></i>
+                                </button>
+                                <div class="sd-chapter-panel" ${isOpen ? "" : "hidden"}>
+                                    ${
+                                        unlocked
+                                            ? `${buildChapterMediaHtml(ch)}${
+                                                  completed
+                                                      ? `<div class="sd-chapter-quiz">
+                                                            <p class="sd-quiz-result is-success">
+                                                                <i class="fa-solid fa-circle-check"></i>
+                                                                Chapter quiz completed. Next chapter is unlocked.
+                                                            </p>
+                                                         </div>`
+                                                      : buildInteractiveQuizHtml(ch)
+                                              }`
+                                            : `<div class="sd-chapter-locked-msg">
+                                                    <i class="fa-solid fa-lock"></i>
+                                                    <p>Complete the previous chapter quiz to unlock this chapter.</p>
+                                               </div>`
+                                    }
+                                </div>
+                            </article>`;
+                    })
+                    .join("")}
+            </div>`;
+
+        bindChapterStepperEvents(chaptersEl, course);
+        activateChapterVideos(chaptersEl.querySelector(".sd-chapter-step.is-open"));
+    }
+
+    function activateChapterVideos(stepEl) {
+        if (!stepEl) return;
+        stepEl.querySelectorAll(".sd-video-wrap iframe").forEach((iframe) => {
+            const src = iframe.getAttribute("data-src");
+            if (src && !iframe.getAttribute("src")) {
+                iframe.setAttribute("src", src);
+            }
+        });
+    }
+
+    function openChapterStep(stepEl) {
+        const stepper = document.getElementById("sd-chapter-stepper");
+        if (!stepper || !stepEl || stepEl.dataset.unlocked !== "true") return;
+
+        stopChapterVideos(stepper);
+        stepper.querySelectorAll(".sd-chapter-step").forEach((step) => {
+            const isTarget = step === stepEl;
+            step.classList.toggle("is-open", isTarget);
+            const panel = step.querySelector(".sd-chapter-panel");
+            const toggle = step.querySelector(".sd-chapter-toggle");
+            if (panel) panel.hidden = !isTarget;
+            if (toggle) toggle.setAttribute("aria-expanded", isTarget ? "true" : "false");
+        });
+        activateChapterVideos(stepEl);
+        stepEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+
+    function bindChapterStepperEvents(chaptersEl, course) {
+        chaptersEl.querySelectorAll(".sd-chapter-toggle").forEach((btn) => {
+            btn.addEventListener("click", () => {
+                const step = btn.closest(".sd-chapter-step");
+                if (!step || step.dataset.unlocked !== "true") return;
+                if (step.classList.contains("is-open")) {
+                    // Keep one chapter focused; collapse only if already open and user toggles
+                    const panel = step.querySelector(".sd-chapter-panel");
+                    if (panel) {
+                        const willHide = !panel.hidden;
+                        if (willHide) stopChapterVideos(step);
+                        panel.hidden = willHide;
+                        step.classList.toggle("is-open", !willHide);
+                        btn.setAttribute("aria-expanded", willHide ? "false" : "true");
+                        if (!willHide) activateChapterVideos(step);
+                    }
+                    return;
+                }
+                openChapterStep(step);
+            });
+        });
+
+        chaptersEl.querySelectorAll(".sd-btn-complete-chapter").forEach((btn) => {
+            btn.addEventListener("click", () => {
+                const chapterId = Number(btn.dataset.chapterId);
+                completeChapterAndRefresh(course, chapterId, "Chapter marked complete. Next chapter unlocked.");
+            });
+        });
+
+        chaptersEl.querySelectorAll(".sd-quiz-form").forEach((form) => {
+            form.addEventListener("submit", (e) => {
+                e.preventDefault();
+                handleQuizSubmit(form, course);
+            });
+        });
+    }
+
+    function handleQuizSubmit(form, course) {
+        const chapterId = Number(form.dataset.chapterId);
+        const questions = Array.from(form.querySelectorAll(".sd-quiz-question"));
+        const resultEl = form.querySelector(".sd-quiz-result");
+
+        if (!questions.length) {
+            completeChapterAndRefresh(course, chapterId, "Chapter completed.");
+            return;
+        }
+
+        let unanswered = 0;
+        let correct = 0;
+
+        questions.forEach((qEl) => {
+            const selected = qEl.querySelector('input[type="radio"]:checked');
+            const expected = String(qEl.dataset.correct || "").trim().toUpperCase();
+            qEl.classList.remove("is-correct", "is-wrong", "is-unanswered");
+
+            if (!selected) {
+                unanswered += 1;
+                qEl.classList.add("is-unanswered");
+                return;
+            }
+
+            if (String(selected.value).trim().toUpperCase() === expected) {
+                correct += 1;
+                qEl.classList.add("is-correct");
+            } else {
+                qEl.classList.add("is-wrong");
+            }
+        });
+
+        if (unanswered > 0) {
+            if (resultEl) {
+                resultEl.hidden = false;
+                resultEl.className = "sd-quiz-result is-error";
+                resultEl.innerHTML = `<i class="fa-solid fa-circle-exclamation"></i> Please answer all ${questions.length} questions before submitting.`;
+            }
+            return;
+        }
+
+        const total = questions.length;
+        const percent = Math.round((correct / total) * 100);
+        const passed = percent >= 50;
+
+        if (resultEl) {
+            resultEl.hidden = false;
+            resultEl.className = `sd-quiz-result ${passed ? "is-success" : "is-error"}`;
+            resultEl.innerHTML = passed
+                ? `<i class="fa-solid fa-circle-check"></i> Quiz submitted: ${correct}/${total} correct (${percent}%). Chapter unlocked for progress.`
+                : `<i class="fa-solid fa-circle-exclamation"></i> Score ${correct}/${total} (${percent}%). You need at least 50% to unlock the next chapter. Try again.`;
+        }
+
+        if (!passed) return;
+
+        // Disable further edits after successful submit
+        form.querySelectorAll("input[type='radio']").forEach((input) => {
+            input.disabled = true;
+        });
+        const submitBtn = form.querySelector(".sd-btn-submit-quiz");
+        if (submitBtn) submitBtn.disabled = true;
+
+        completeChapterAndRefresh(
+            course,
+            chapterId,
+            `Quiz completed (${correct}/${total}). Next chapter unlocked.`
+        );
+    }
+
+    function completeChapterAndRefresh(course, chapterId, message) {
+        markChapterComplete(course.Course_ID, chapterId);
+        if (message) alert(message);
+        renderChapterStepper(course);
+    }
+
     function ensureStudentCourseOverlay() {
         let overlay = document.getElementById("sd-course-view-overlay");
         if (!overlay) {
@@ -526,9 +934,11 @@ document.addEventListener("DOMContentLoaded", function () {
     function closeEnrolledCourseView() {
         const overlay = document.getElementById("sd-course-view-overlay");
         if (!overlay) return;
+        stopChapterVideos(overlay);
         overlay.classList.remove("is-open");
         overlay.setAttribute("aria-hidden", "true");
         document.body.classList.remove("sd-overlay-open");
+        activeCourseView = null;
     }
 
     function openEnrolledCourseView(course) {
@@ -538,7 +948,6 @@ document.addEventListener("DOMContentLoaded", function () {
         const descEl = document.getElementById("sd-course-view-description");
         const teacherEl = document.getElementById("sd-course-view-teacher");
         const priceEl = document.getElementById("sd-course-view-price");
-        const chaptersEl = document.getElementById("sd-course-view-chapters");
 
         if (titleEl) titleEl.textContent = course.Title || "Untitled Course";
         if (descEl) {
@@ -552,90 +961,7 @@ document.addEventListener("DOMContentLoaded", function () {
         }
         if (priceEl) priceEl.textContent = formatPrice(course.Price);
 
-        const chapters = Array.isArray(course.chapters) ? course.chapters : [];
-        if (chaptersEl) {
-            if (!chapters.length) {
-                chaptersEl.innerHTML = `<p class="sd-inline-empty">No chapters published for this course yet.</p>`;
-            } else {
-                chaptersEl.innerHTML = chapters
-                    .slice()
-                    .sort((a, b) => (a.Chapter_Number || 0) - (b.Chapter_Number || 0))
-                    .map((ch) => {
-                        const videoEmbed = toYouTubeEmbed(ch.Video_Link_Or_Path);
-                        const pdfUrl = buildPdfUrl(ch.PDF_Link_Or_Path);
-                        const quiz = ch.quiz;
-                        const questions = quiz && Array.isArray(quiz.questions) ? quiz.questions : [];
-
-                        let mediaHtml = `<div class="sd-chapter-media">`;
-                        if (videoEmbed) {
-                            mediaHtml += `
-                                <div class="sd-video-wrap">
-                                    <iframe src="${escapeHtml(videoEmbed)}" title="Chapter video"
-                                        allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                                        allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>
-                                </div>`;
-                        } else if (ch.Video_Link_Or_Path) {
-                            mediaHtml += `<p class="sd-media-note"><i class="fa-solid fa-video"></i> Video: ${escapeHtml(
-                                ch.Video_Link_Or_Path
-                            )}</p>`;
-                        } else {
-                            mediaHtml += `<p class="sd-media-note muted">No video for this chapter.</p>`;
-                        }
-
-                        if (pdfUrl) {
-                            mediaHtml += `<a class="sd-btn sd-btn-pdf" href="${escapeHtml(
-                                pdfUrl
-                            )}" target="_blank" rel="noopener noreferrer">
-                                <i class="fa-solid fa-file-pdf"></i> Open PDF
-                            </a>`;
-                        } else {
-                            mediaHtml += `<p class="sd-media-note muted">No PDF for this chapter.</p>`;
-                        }
-                        mediaHtml += `</div>`;
-
-                        let quizHtml = "";
-                        if (quiz) {
-                            quizHtml = `
-                                <div class="sd-chapter-quiz">
-                                    <h4><i class="fa-solid fa-list-check"></i> ${escapeHtml(
-                                        quiz.Quiz_Title || "Chapter Quiz"
-                                    )}</h4>
-                                    ${
-                                        questions.length
-                                            ? questions
-                                                  .map(
-                                                      (q, idx) => `
-                                        <div class="sd-quiz-question">
-                                            <p class="sd-q-text"><strong>Q${idx + 1}.</strong> ${escapeHtml(
-                                                          q.Question_Text || ""
-                                                      )}</p>
-                                            <ul class="sd-q-options">
-                                                <li>A. ${escapeHtml(q.Option_A || "")}</li>
-                                                <li>B. ${escapeHtml(q.Option_B || "")}</li>
-                                                <li>C. ${escapeHtml(q.Option_C || "")}</li>
-                                                <li>D. ${escapeHtml(q.Option_D || "")}</li>
-                                            </ul>
-                                        </div>`
-                                                  )
-                                                  .join("")
-                                            : `<p class="sd-media-note muted">No questions in this quiz yet.</p>`
-                                    }
-                                </div>`;
-                        }
-
-                        return `
-                            <article class="sd-chapter-card">
-                                <header class="sd-chapter-header">
-                                    <span class="sd-chapter-num">${escapeHtml(String(ch.Chapter_Number || ""))}</span>
-                                    <h4>${escapeHtml(ch.Chapter_Title || "Chapter")}</h4>
-                                </header>
-                                ${mediaHtml}
-                                ${quizHtml}
-                            </article>`;
-                    })
-                    .join("");
-            }
-        }
+        renderChapterStepper(course);
 
         overlay.classList.add("is-open");
         overlay.setAttribute("aria-hidden", "false");
