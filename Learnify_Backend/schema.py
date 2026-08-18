@@ -214,3 +214,22 @@ class StudentCourseActivitiesResponse(BaseModel):
     Course_ID: int
     saved_count: int
 
+
+# Additive: student risk prediction (model_02 VotingClassifier pipeline)
+class StudentRiskPredictRequest(BaseModel):
+    Course_ID: Optional[int] = None
+    extra_features: Optional[dict] = None
+
+
+class StudentRiskPredictResponse(BaseModel):
+    status: str
+    message: str
+    Student_ID: int
+    Course_ID: Optional[int] = None
+    Risk_Level: str
+    Risk_Level_Normalized: Optional[str] = None
+    features_used: List[str] = []
+    probabilities: Optional[dict] = None
+    Prediction_ID: Optional[int] = None
+    activity_count: int = 0
+

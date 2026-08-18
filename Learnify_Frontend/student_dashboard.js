@@ -70,6 +70,8 @@ document.addEventListener("DOMContentLoaded", function () {
                 loadMyCourses();
             } else if (tabId === "finish-courses") {
                 loadFinishedCourses();
+            } else if (tabId === "course-result") {
+                loadCourseResults();
             }
         });
     });
@@ -544,6 +546,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 empty.hidden = false;
                 empty.innerHTML = `<i class="fa-solid fa-flag-checkered"></i><p>No finished courses yet. Keep learning!</p>`;
             }
+            loadCourseResults({ silent: true });
             return;
         }
 
@@ -576,6 +579,194 @@ document.addEventListener("DOMContentLoaded", function () {
 
         if (!options.silent) {
             console.log(`Finished courses loaded: ${finished.length}`);
+        }
+
+        loadCourseResults({ silent: true });
+    }
+
+    // ------------------------------------------
+    // Course Results — finished courses + risk badges
+    // ------------------------------------------
+    function riskPredictionCacheKey(courseId) {
+        const who = (displayEmail || displayName || "student").toLowerCase();
+        return `learnify_risk_prediction_${who}_${courseId}`;
+    }
+
+    function loadCachedRiskPrediction(courseId) {
+        try {
+            const raw = localStorage.getItem(riskPredictionCacheKey(courseId));
+            if (!raw) return null;
+            return JSON.parse(raw);
+        } catch (_) {
+            return null;
+        }
+    }
+
+    function saveCachedRiskPrediction(courseId, data) {
+        localStorage.setItem(
+            riskPredictionCacheKey(courseId),
+            JSON.stringify({
+                Risk_Level: data.Risk_Level,
+                Risk_Level_Normalized: data.Risk_Level_Normalized || null,
+                savedAt: new Date().toISOString(),
+            })
+        );
+    }
+
+    function mapRiskLabelForDisplay(label) {
+        const RISK_LABEL_DISPLAY = {
+            L: "Low Risk",
+            M: "Medium Risk",
+            H: "High Risk",
+            l: "Low Risk",
+            m: "Medium Risk",
+            h: "High Risk",
+            Low: "Low Risk",
+            Medium: "Medium Risk",
+            High: "High Risk",
+        };
+        const raw = String(label == null ? "" : label).trim();
+        if (!raw) return "";
+        return RISK_LABEL_DISPLAY[raw] || RISK_LABEL_DISPLAY[raw.toUpperCase()] || raw;
+    }
+
+    function classifyRiskTone(label) {
+        const text = String(label || "").toLowerCase().replace(/_/g, " ").trim();
+        if (!text) return "unknown";
+        if (text === "h" || text === "high" || text === "high risk") return "high";
+        if (text === "m" || text === "medium" || text === "medium risk") return "medium";
+        if (text === "l" || text === "low" || text === "low risk") return "low";
+        if (
+            text.includes("high") ||
+            text.includes("fail") ||
+            text.includes("poor") ||
+            text.includes("critical") ||
+            text.includes("at risk")
+        ) {
+            return "high";
+        }
+        if (
+            text.includes("medium") ||
+            text.includes("moderate") ||
+            text.includes("average") ||
+            text.includes("fair")
+        ) {
+            return "medium";
+        }
+        if (
+            text.includes("low") ||
+            text.includes("good") ||
+            text.includes("excellent") ||
+            text.includes("pass") ||
+            text.includes("safe") ||
+            text.includes("strong")
+        ) {
+            return "low";
+        }
+        return "unknown";
+    }
+
+    function formatRiskBadge(label, normalized) {
+        const display =
+            mapRiskLabelForDisplay(label) ||
+            mapRiskLabelForDisplay(normalized) ||
+            "Pending";
+        const tone = classifyRiskTone(label || normalized);
+        return `<span class="sd-risk-badge sd-risk-${tone}">${escapeHtml(display)}</span>`;
+    }
+
+    async function fetchRiskForCourse(courseId) {
+        const cached = loadCachedRiskPrediction(courseId);
+        if (cached && cached.Risk_Level) {
+            return cached;
+        }
+
+        const data = await apiJson(`${API_BASE_URL}/student/predict-risk`, {
+            method: "POST",
+            body: JSON.stringify({ Course_ID: courseId }),
+        });
+
+        const prediction = {
+            Risk_Level: data.Risk_Level,
+            Risk_Level_Normalized: data.Risk_Level_Normalized || null,
+        };
+        saveCachedRiskPrediction(courseId, prediction);
+        return prediction;
+    }
+
+    async function loadCourseResults(options = {}) {
+        const empty = document.getElementById("course-results-empty");
+        const tableWrap = document.getElementById("course-results-table-wrap");
+        const tbody = document.getElementById("course-results-tbody");
+        if (!tbody) return;
+
+        // Ensure enrolled cache is available
+        if (!enrolledCoursesCache.length) {
+            try {
+                const courses = await apiJson(`${API_BASE_URL}/student/my-courses`);
+                enrolledCoursesCache = Array.isArray(courses) ? courses : [];
+            } catch (err) {
+                console.error(err);
+                if (tableWrap) tableWrap.hidden = true;
+                if (empty) {
+                    empty.hidden = false;
+                    empty.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i><p>${escapeHtml(
+                        err.message || "Could not load course results."
+                    )}</p>`;
+                }
+                return;
+            }
+        }
+
+        const finished = (enrolledCoursesCache || []).filter((course) => isCourseFullyCompleted(course));
+        tbody.innerHTML = "";
+
+        if (!finished.length) {
+            if (tableWrap) tableWrap.hidden = true;
+            if (empty) {
+                empty.hidden = false;
+                empty.innerHTML = `<i class="fa-solid fa-chart-column"></i><p>Results will appear here after you complete a full course.</p>`;
+            }
+            return;
+        }
+
+        if (empty) {
+            empty.hidden = false;
+            empty.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i><p>Loading predicted results...</p>`;
+        }
+        if (tableWrap) tableWrap.hidden = true;
+
+        const rows = [];
+        for (const course of finished) {
+            let prediction = null;
+            let errorText = null;
+            try {
+                prediction = await fetchRiskForCourse(course.Course_ID);
+            } catch (err) {
+                console.error(err);
+                errorText = err.message || "Prediction unavailable";
+            }
+
+            const badgeHtml = prediction
+                ? formatRiskBadge(prediction.Risk_Level, prediction.Risk_Level_Normalized)
+                : `<span class="sd-risk-badge sd-risk-unknown">${escapeHtml(errorText || "Pending")}</span>`;
+
+            rows.push(`
+                <tr data-course-id="${course.Course_ID}">
+                    <td data-label="Course Name">
+                        <span class="sd-result-course-name">${escapeHtml(course.Title || "Untitled Course")}</span>
+                    </td>
+                    <td data-label="Predicted Performance / Risk">${badgeHtml}</td>
+                </tr>
+            `);
+        }
+
+        tbody.innerHTML = rows.join("");
+        if (empty) empty.hidden = true;
+        if (tableWrap) tableWrap.hidden = false;
+
+        if (!options.silent) {
+            console.log(`Course results loaded: ${finished.length}`);
         }
     }
 
@@ -1184,6 +1375,7 @@ document.addEventListener("DOMContentLoaded", function () {
         renderChapterStepper(course);
         loadFinishedCourses({ silent: true });
         loadMyCourses({ silent: true });
+        loadCourseResults({ silent: true });
     }
 
     async function handleQuizSubmit(form, course) {
@@ -1333,6 +1525,7 @@ document.addEventListener("DOMContentLoaded", function () {
         loadAvailableCourses,
         loadMyCourses,
         loadFinishedCourses,
+        loadCourseResults,
         closeEnrolledCourseView,
     };
 

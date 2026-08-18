@@ -154,12 +154,23 @@
                     <div class="student-panel-card" id="course-result-panel">
                         <div class="student-panel-header">
                             <h2><i class="fa-solid fa-chart-column"></i> Course Results</h2>
-                            <p>Quiz scores and performance overview.</p>
+                            <p>Predicted performance and risk level for your finished courses.</p>
                         </div>
                         <div class="student-results-wrap" id="course-results-container">
                             <div class="student-empty-state" id="course-results-empty">
                                 <i class="fa-solid fa-chart-column"></i>
-                                <p>Results will appear here after you complete quizzes.</p>
+                                <p>Results will appear here after you complete a full course.</p>
+                            </div>
+                            <div class="student-table-responsive" id="course-results-table-wrap" hidden>
+                                <table class="student-finished-table student-results-table" id="course-results-table">
+                                    <thead>
+                                        <tr>
+                                            <th scope="col">Course Name</th>
+                                            <th scope="col">Predicted Performance / Risk</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="course-results-tbody"></tbody>
+                                </table>
                             </div>
                         </div>
                     </div>

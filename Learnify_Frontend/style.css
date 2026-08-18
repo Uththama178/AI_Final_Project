@@ -3246,3 +3246,64 @@ body.sd-overlay-open {
     }
 }
 
+/* Course Results — risk / performance badges */
+.student-results-table {
+    min-width: 420px;
+}
+
+.sd-result-course-name {
+    font-weight: 600;
+    color: #f8fafc;
+}
+
+.sd-risk-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    border: 1px solid transparent;
+    white-space: nowrap;
+}
+
+.sd-risk-low {
+    color: #064e3b;
+    background: rgba(16, 185, 129, 0.2);
+    border-color: rgba(16, 185, 129, 0.45);
+}
+
+.sd-risk-medium {
+    color: #78350f;
+    background: rgba(245, 158, 11, 0.22);
+    border-color: rgba(245, 158, 11, 0.5);
+}
+
+.sd-risk-high {
+    color: #7f1d1d;
+    background: rgba(239, 68, 68, 0.2);
+    border-color: rgba(239, 68, 68, 0.45);
+}
+
+.sd-risk-unknown {
+    color: #e2e8f0;
+    background: rgba(148, 163, 184, 0.16);
+    border-color: rgba(148, 163, 184, 0.3);
+}
+
+/* Dark student dashboard: brighten badge text for contrast */
+.student-dashboard-body .sd-risk-low {
+    color: #6ee7b7;
+}
+
+.student-dashboard-body .sd-risk-medium {
+    color: #fcd34d;
+}
+
+.student-dashboard-body .sd-risk-high {
+    color: #fca5a5;
+}
+

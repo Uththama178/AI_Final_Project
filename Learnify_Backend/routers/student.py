@@ -452,3 +452,147 @@ def save_complete_course_activities(
         Course_ID=payload.Course_ID,
         saved_count=saved_count,
     )
+
+
+# ====================================================================================
+# 6) POST /student/predict-risk — model_02 risk / performance prediction
+#     Loads scaler_selected, label_encoders, selected_features, student_risk_model_best
+#     Does NOT alter existing tables/schemas beyond writing AcademicPrediction rows
+#     when the label maps to High/Medium/Low.
+# ====================================================================================
+@router.post(
+    "/predict-risk",
+    response_model=schema.StudentRiskPredictResponse,
+    status_code=status.HTTP_200_OK,
+)
+def predict_student_risk(
+    payload: schema.StudentRiskPredictRequest,
+    db: Session = Depends(get_db),
+    current_user: models.AppUser = Depends(get_current_user),
+):
+    """
+    Predict student risk/performance using model_02 artifacts:
+    label_encoders → selected_features → scaler_selected → VotingClassifier.
+    """
+    from risk_predictor import (
+        build_features_from_activities,
+        normalize_risk_for_db,
+        predict_risk_level,
+        to_display_risk_label,
+    )
+
+    _require_student(current_user)
+    student = _get_student_profile(db, current_user)
+    body = payload
+
+    course_id = body.Course_ID
+    if course_id is not None:
+        enrollment = (
+            db.query(models.Enrollment)
+            .filter(
+                models.Enrollment.Student_ID == student.Student_ID,
+                models.Enrollment.Course_ID == course_id,
+            )
+            .first()
+        )
+        if not enrollment:
+            raise HTTPException(
+                status_code=403,
+                detail="You can only predict risk for courses you are enrolled in.",
+            )
+
+        # Activities for quizzes that belong to this course's chapters
+        chapter_ids = [
+            row.Chapter_ID
+            for row in db.query(models.CourseChapter.Chapter_ID)
+            .filter(models.CourseChapter.Course_ID == course_id)
+            .all()
+        ]
+        quiz_ids = [
+            row.Quiz_ID
+            for row in db.query(models.Quiz.Quiz_ID)
+            .filter(models.Quiz.Chapter_ID.in_(chapter_ids))
+            .all()
+        ] if chapter_ids else []
+
+        activities = (
+            db.query(models.StudentActivity)
+            .filter(
+                models.StudentActivity.Student_ID == student.Student_ID,
+                models.StudentActivity.Quiz_ID.in_(quiz_ids),
+            )
+            .all()
+            if quiz_ids
+            else []
+        )
+    else:
+        activities = (
+            db.query(models.StudentActivity)
+            .filter(models.StudentActivity.Student_ID == student.Student_ID)
+            .all()
+        )
+
+    if not activities:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "No student_activity records found. "
+                "Complete and submit the final chapter quiz so marks are saved first."
+            ),
+        )
+
+    raw_features = build_features_from_activities(
+        activities,
+        current_grade=student.Current_Grade,
+        extra_features=body.extra_features,
+    )
+
+    try:
+        result = predict_risk_level(raw_features)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Risk prediction pipeline failed: {exc}",
+        ) from exc
+
+    risk_label = to_display_risk_label(result["Risk_Level"])
+    normalized = normalize_risk_for_db(result["Risk_Level"])
+
+    prediction_id = None
+    if normalized is not None:
+        # Upsert latest prediction for this student (no schema change; reuse table)
+        existing = (
+            db.query(models.AcademicPrediction)
+            .filter(models.AcademicPrediction.Student_ID == student.Student_ID)
+            .order_by(models.AcademicPrediction.Predicted_Date.desc())
+            .first()
+        )
+        if existing:
+            existing.Risk_Level = normalized
+            db.commit()
+            db.refresh(existing)
+            prediction_id = existing.Prediction_ID
+        else:
+            row = models.AcademicPrediction(
+                Student_ID=student.Student_ID,
+                Risk_Level=normalized,
+            )
+            db.add(row)
+            db.commit()
+            db.refresh(row)
+            prediction_id = row.Prediction_ID
+
+    return schema.StudentRiskPredictResponse(
+        status="Success",
+        message="Student risk/performance predicted using model_02 VotingClassifier pipeline.",
+        Student_ID=student.Student_ID,
+        Course_ID=course_id,
+        Risk_Level=risk_label,
+        Risk_Level_Normalized=normalized,
+        features_used=result.get("features_used") or [],
+        probabilities=result.get("probabilities"),
+        Prediction_ID=prediction_id,
+        activity_count=len(activities),
+    )

@@ -11,3 +11,7 @@ pymysql
 cryptography
 email-validator
 python-multipart
+numpy
+pandas
+scikit-learn
+joblib
