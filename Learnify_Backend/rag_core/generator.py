@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any
+from typing import Any, Callable, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +17,27 @@ HF_MCQ_MODEL_ID = "Uththama/flan-t5-mcq-model"
 _hf_tokenizer = None
 _hf_model = None
 _hf_load_failed = False
+
+# Optional MCQ quality guardrails (never hard-fail the generator if import fails)
+_filter_valid_mcqs: Optional[Callable[..., list]] = None
+_raw_generation_looks_garbage: Optional[Callable[..., bool]] = None
+try:
+    from rag_core.mcq_validator import (  # type: ignore
+        filter_valid_mcqs as _filter_valid_mcqs,
+        raw_generation_looks_garbage as _raw_generation_looks_garbage,
+    )
+except Exception:
+    try:
+        from .mcq_validator import (  # type: ignore
+            filter_valid_mcqs as _filter_valid_mcqs,
+            raw_generation_looks_garbage as _raw_generation_looks_garbage,
+        )
+    except Exception:
+        logger.warning(
+            "mcq_validator could not be imported; T5 outputs will use legacy parse-only checks."
+        )
+        _filter_valid_mcqs = None
+        _raw_generation_looks_garbage = None
 
 
 def generate_mcqs_from_context(context: str, num_questions: int = 5) -> list[dict[str, Any]]:
@@ -39,9 +60,34 @@ def generate_mcqs_from_context(context: str, num_questions: int = 5) -> list[dic
 
     try:
         mcqs = _generate_with_hf_t5_model(context, num_questions)
-        if mcqs and len(mcqs) > 0:
-            logger.info("Generated %d MCQ(s) via Hugging Face model %s", len(mcqs), HF_MCQ_MODEL_ID)
-            return mcqs
+        if _filter_valid_mcqs is not None and mcqs:
+            try:
+                mcqs = _filter_valid_mcqs(mcqs)
+            except Exception:
+                logger.exception("MCQ validator filter failed; keeping pre-filter HF results.")
+
+        if mcqs and len(mcqs) >= num_questions:
+            logger.info(
+                "Generated %d MCQ(s) via Hugging Face model %s",
+                len(mcqs),
+                HF_MCQ_MODEL_ID,
+            )
+            return mcqs[:num_questions]
+
+        if mcqs:
+            # Partial HF success after validation — fill the rest with rule-based items
+            logger.warning(
+                "Only %d valid HF MCQ(s); topping up with rule-based generator.",
+                len(mcqs),
+            )
+            rule_mcqs = _generate_rule_based_mcqs(context, num_questions)
+            merged = list(mcqs)
+            for item in rule_mcqs:
+                if len(merged) >= num_questions:
+                    break
+                merged.append(item)
+            return merged[:num_questions] if merged else _get_fallback_questions()
+
         logger.warning("HF model returned no usable MCQs; falling back to rule-based generator.")
         return _generate_rule_based_mcqs(context, num_questions)
     except Exception:
@@ -49,7 +95,11 @@ def generate_mcqs_from_context(context: str, num_questions: int = 5) -> list[dic
             "HF MCQ generation failed for model %s; falling back to rule-based generator.",
             HF_MCQ_MODEL_ID,
         )
-        return _generate_rule_based_mcqs(context, num_questions)
+        try:
+            return _generate_rule_based_mcqs(context, num_questions)
+        except Exception:
+            logger.exception("Rule-based MCQ generation also failed; returning static fallback.")
+            return _get_fallback_questions()
 
 
 def _load_hf_mcq_model() -> tuple[Any, Any]:
@@ -349,17 +399,40 @@ def _generate_with_hf_t5_model(context: str, num_questions: int = 5) -> list[dic
             )
 
         raw = tokenizer.decode(output_ids[0], skip_special_tokens=True)
+
+        # Guardrail: skip clearly garbage / single-letter raw T5 strings
+        if _raw_generation_looks_garbage is not None:
+            try:
+                if _raw_generation_looks_garbage(raw):
+                    logger.warning("Skipping garbage raw T5 output for one passage.")
+                    continue
+            except Exception:
+                logger.exception(
+                    "raw_generation_looks_garbage check failed; continuing with parse."
+                )
+
         parsed = _parse_mcq_output(raw, passage)
         if parsed:
             mcqs.append(parsed)
 
+    # Guardrail: drop weak / empty-option / duplicate-style MCQs
+    if _filter_valid_mcqs is not None and mcqs:
+        try:
+            before = len(mcqs)
+            mcqs = _filter_valid_mcqs(mcqs)
+            if len(mcqs) < before:
+                logger.info(
+                    "MCQ validator kept %d/%d HF question(s).",
+                    len(mcqs),
+                    before,
+                )
+        except Exception:
+            logger.exception("filter_valid_mcqs failed; using unfiltered parsed MCQs.")
+
     if not mcqs:
-        raise ValueError("HF model produced no parseable MCQ outputs.")
+        raise ValueError("HF model produced no valid MCQ outputs after validation.")
 
-    # Top up if the model returned fewer than requested
-    while len(mcqs) < num_questions:
-        mcqs.append(mcqs[len(mcqs) % len(mcqs)])
-
+    # Do NOT duplicate weak HF items. Caller tops up with rule-based fallback.
     return mcqs[:num_questions]
 
 
