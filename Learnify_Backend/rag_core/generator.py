@@ -130,6 +130,60 @@ def _load_hf_mcq_model() -> tuple[Any, Any]:
     return _hf_tokenizer, _hf_model
 
 
+def _clean_context_for_t5(text: str) -> str:
+    """
+    Lightweight RAG passage cleaner used only before T5 generation.
+
+    Strips boilerplate, empty lines, page artifacts, and non-factual noise
+    while preserving factual sentence content. Does not alter prompt prefixes,
+    parsing, validation, or API shapes.
+    """
+    if not text or not str(text).strip():
+        return ""
+
+    cleaned = str(text)
+
+    # Drop known pipeline markers / form-feeds / soft hyphens
+    cleaned = cleaned.replace("\x0c", " ").replace("\u00ad", "")
+    cleaned = re.sub(
+        r"(?i)\[?\s*VIDEO\s+TRANSCRIPT\s+CONTENT\s*\]?",
+        " ",
+        cleaned,
+    )
+
+    # Page / header / footer style artifacts common in PDF extracts
+    cleaned = re.sub(r"(?im)^\s*(?:page\s*)?\d+\s*(?:of\s*\d+)?\s*$", " ", cleaned)
+    cleaned = re.sub(r"(?i)\bpage\s+\d+\s*(?:of\s*\d+)?\b", " ", cleaned)
+    cleaned = re.sub(r"(?im)^\s*[-–—_]{3,}\s*$", " ", cleaned)
+    cleaned = re.sub(r"(?im)^\s*\d{1,4}\s*$", " ", cleaned)
+
+    # Remove URLs and emails (noise for short MCQ support text)
+    cleaned = re.sub(r"https?://\S+|www\.\S+", " ", cleaned)
+    cleaned = re.sub(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b", " ", cleaned)
+
+    # Collapse runs of non-alphanumeric noise (keep basic punctuation)
+    cleaned = re.sub(r"[^\w\s\.\,\?\!\;\:\'\"\(\)\-\/%]+", " ", cleaned, flags=re.UNICODE)
+    cleaned = re.sub(r"([.!?]){3,}", r"\1", cleaned)
+    cleaned = re.sub(r"([-_=]){3,}", " ", cleaned)
+
+    # Line-level filter: drop empty / mostly non-letter lines
+    kept_lines: list[str] = []
+    for raw_line in cleaned.splitlines():
+        line = " ".join(raw_line.split()).strip()
+        if not line:
+            continue
+        letters = sum(1 for ch in line if ch.isalpha())
+        if letters < 8:
+            continue
+        if letters / max(len(line), 1) < 0.35:
+            continue
+        kept_lines.append(line)
+
+    cleaned = " ".join(kept_lines) if kept_lines else " ".join(cleaned.split())
+    cleaned = " ".join(cleaned.split()).strip()
+    return cleaned
+
+
 def _split_context_passages(context: str, num_questions: int) -> list[str]:
     """Split retrieved context into short passages for per-question generation."""
     sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", context) if len(s.strip()) > 20]
@@ -372,7 +426,13 @@ def _generate_with_hf_t5_model(context: str, num_questions: int = 5) -> list[dic
         _hf_load_failed = True
         raise
 
-    passages = _split_context_passages(context, num_questions)
+    # Clean retrieved RAG text once before passage split / T5 prompting
+    cleaned_context = _clean_context_for_t5(context)
+    if not cleaned_context:
+        # Avoid hard-failing generation if cleaning was too aggressive
+        cleaned_context = " ".join((context or "").split()).strip()
+
+    passages = _split_context_passages(cleaned_context, num_questions)
     if not passages:
         raise ValueError("No usable passages extracted from context for HF generation.")
 
@@ -380,6 +440,10 @@ def _generate_with_hf_t5_model(context: str, num_questions: int = 5) -> list[dic
     mcqs: list[dict[str, Any]] = []
 
     for passage in passages:
+        # Light per-passage pass so leftover artifacts never reach the prompt
+        passage = _clean_context_for_t5(passage) or " ".join(passage.split()).strip()
+        if not passage:
+            continue
         prompt = _build_t5_prompt(passage)
         inputs = tokenizer(
             prompt,
@@ -396,6 +460,8 @@ def _generate_with_hf_t5_model(context: str, num_questions: int = 5) -> list[dic
                 max_length=128,
                 num_beams=4,
                 early_stopping=True,
+                no_repeat_ngram_size=2,
+                repetition_penalty=1.2,
             )
 
         raw = tokenizer.decode(output_ids[0], skip_special_tokens=True)
