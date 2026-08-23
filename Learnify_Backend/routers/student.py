@@ -2,12 +2,14 @@
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func
 from jose import JWTError, jwt
 from fastapi.security import OAuth2PasswordBearer
 
 from database import get_db
 import models
 import schema
+from course_recommender import rank_related_courses
 
 router = APIRouter(
     prefix="/student",
@@ -325,6 +327,154 @@ def rate_enrolled_course(
         message="Course rating saved successfully.",
         Course_ID=course_id,
         Rating_Stars=rating.Rating_Stars,
+    )
+
+
+# ====================================================================================
+# 4b) Recommendation helpers + GET /student/recommendations
+#     Pools + TF-IDF relatedness ranked by marketplace average stars.
+# ====================================================================================
+def _course_to_recommendation_item(
+    course: models.Course,
+    *,
+    enrollment: models.Enrollment | None = None,
+) -> schema.StudentRecommendationCourseItem:
+    enrollment_date = None
+    enrollment_id = None
+    if enrollment is not None:
+        enrollment_id = enrollment.Enrollment_ID
+        if enrollment.Enrollment_Date is not None:
+            enrollment_date = enrollment.Enrollment_Date.isoformat()
+
+    return schema.StudentRecommendationCourseItem(
+        Course_ID=course.Course_ID,
+        Title=course.Title,
+        Description=course.Description,
+        Price=float(course.Price or 0),
+        Teacher_ID=course.Teacher_ID,
+        Teacher_Name=_teacher_name(course),
+        chapter_count=len(course.chapters or []),
+        is_published=bool(course.is_published),
+        Enrollment_ID=enrollment_id,
+        Enrollment_Date=enrollment_date,
+    )
+
+
+def _fetch_recommendation_course_pools(
+    db: Session,
+    student: models.Student,
+) -> tuple[list[schema.StudentRecommendationCourseItem], list[schema.StudentRecommendationCourseItem]]:
+    """
+    Load recommendation input pools for a student:
+    - enrolled_courses: courses from Enrollment
+    - candidate_courses: published catalog excluding enrolled Course_IDs
+    """
+    enrollments = (
+        db.query(models.Enrollment)
+        .options(
+            joinedload(models.Enrollment.course)
+            .joinedload(models.Course.teacher)
+            .joinedload(models.Teacher.user),
+            joinedload(models.Enrollment.course).joinedload(models.Course.chapters),
+        )
+        .filter(models.Enrollment.Student_ID == student.Student_ID)
+        .all()
+    )
+
+    enrolled_courses: list[schema.StudentRecommendationCourseItem] = []
+    enrolled_ids: set[int] = set()
+    for enrollment in enrollments:
+        course = enrollment.course
+        if not course:
+            continue
+        enrolled_ids.add(course.Course_ID)
+        enrolled_courses.append(
+            _course_to_recommendation_item(course, enrollment=enrollment)
+        )
+
+    published = (
+        db.query(models.Course)
+        .options(
+            joinedload(models.Course.teacher).joinedload(models.Teacher.user),
+            joinedload(models.Course.chapters),
+        )
+        .filter(models.Course.is_published.is_(True))
+        .all()
+    )
+
+    candidate_courses = [
+        _course_to_recommendation_item(course)
+        for course in published
+        if course.Course_ID not in enrolled_ids
+    ]
+
+    return enrolled_courses, candidate_courses
+
+
+def _marketplace_rating_stats(
+    db: Session,
+    course_ids: list[int],
+) -> tuple[dict[int, float], dict[int, int]]:
+    """Average Rating_Stars and rating counts per course (marketplace signal)."""
+    if not course_ids:
+        return {}, {}
+
+    rows = (
+        db.query(
+            models.CourseRating.Course_ID,
+            func.avg(models.CourseRating.Rating_Stars).label("avg_stars"),
+            func.count(models.CourseRating.Rating_ID).label("rating_count"),
+        )
+        .filter(models.CourseRating.Course_ID.in_(course_ids))
+        .group_by(models.CourseRating.Course_ID)
+        .all()
+    )
+
+    averages: dict[int, float] = {}
+    counts: dict[int, int] = {}
+    for course_id, avg_stars, rating_count in rows:
+        averages[int(course_id)] = float(avg_stars or 0.0)
+        counts[int(course_id)] = int(rating_count or 0)
+    return averages, counts
+
+
+@router.get(
+    "/recommendations",
+    response_model=schema.StudentRecommendationsSeedResponse,
+)
+def get_student_recommendations(
+    db: Session = Depends(get_db),
+    current_user: models.AppUser = Depends(get_current_user),
+):
+    """
+    Return enrolled/candidate pools plus top related courses ranked by
+    TF-IDF cosine similarity (Title/Description) and marketplace star averages.
+    """
+    _require_student(current_user)
+    student = _get_student_profile(db, current_user)
+
+    enrolled_courses, candidate_courses = _fetch_recommendation_course_pools(db, student)
+
+    averages, counts = _marketplace_rating_stats(
+        db,
+        [c.Course_ID for c in candidate_courses],
+    )
+
+    ranked = rank_related_courses(
+        enrolled_courses,
+        candidate_courses,
+        average_ratings=averages,
+        rating_counts=counts,
+    )
+
+    recommended = [
+        schema.StudentRecommendedCourseItem(**item) for item in ranked
+    ]
+
+    return schema.StudentRecommendationsSeedResponse(
+        enrolled_courses=enrolled_courses,
+        candidate_courses=candidate_courses,
+        recommended_courses=recommended,
     )
 
 

@@ -72,6 +72,8 @@ document.addEventListener("DOMContentLoaded", function () {
                 loadFinishedCourses();
             } else if (tabId === "course-result") {
                 loadCourseResults();
+            } else if (tabId === "recommendations") {
+                loadRecommendations();
             }
         });
     });
@@ -269,6 +271,54 @@ document.addEventListener("DOMContentLoaded", function () {
                 "available-courses-empty",
                 "fa-triangle-exclamation",
                 err.message || "Could not load courses."
+            );
+        }
+    }
+
+    // ------------------------------------------
+    // Recommendations (reuse catalog cards + enroll)
+    // ------------------------------------------
+    async function loadRecommendations() {
+        const container = document.getElementById("recommendations-container");
+        if (!container) return;
+
+        clearCourseCards(container, "recommendations-empty");
+        const empty = ensureEmptyState(
+            container,
+            "recommendations-empty",
+            "fa-spinner fa-spin",
+            "Loading personalized recommendations..."
+        );
+
+        try {
+            const data = await apiJson(`${API_BASE_URL}/student/recommendations`);
+            const recommended = Array.isArray(data && data.recommended_courses)
+                ? data.recommended_courses
+                : [];
+
+            container.querySelectorAll(".sd-course-card").forEach((el) => el.remove());
+
+            if (!recommended.length) {
+                ensureEmptyState(
+                    container,
+                    "recommendations-empty",
+                    "fa-lightbulb",
+                    "No recommendations yet. Enroll in a course to get related suggestions."
+                );
+                return;
+            }
+
+            if (empty) empty.hidden = true;
+            recommended.forEach((course) => {
+                container.appendChild(createCatalogCard(course));
+            });
+        } catch (err) {
+            console.error(err);
+            ensureEmptyState(
+                container,
+                "recommendations-empty",
+                "fa-triangle-exclamation",
+                err.message || "Could not load recommendations."
             );
         }
     }

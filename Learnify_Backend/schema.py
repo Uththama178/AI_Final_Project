@@ -195,6 +195,50 @@ class StudentCourseRatingResponse(BaseModel):
     Rating_Stars: int
 
 
+# 9b. Recommendation schemas (pools + ranked recommendations)
+class StudentRecommendationCourseItem(BaseModel):
+    """Lightweight course summary for recommendation pool fetching."""
+
+    Course_ID: int
+    Title: str
+    Description: Optional[str] = None
+    Price: float
+    Teacher_ID: Optional[int] = None
+    Teacher_Name: str
+    chapter_count: int = 0
+    is_published: bool = True
+    Enrollment_ID: Optional[int] = None
+    Enrollment_Date: Optional[str] = None
+
+
+class StudentRecommendedCourseItem(BaseModel):
+    """Ranked recommendation item with similarity + marketplace rating signals."""
+
+    Course_ID: int
+    Title: str
+    Description: Optional[str] = None
+    Price: float
+    Teacher_ID: Optional[int] = None
+    Teacher_Name: str
+    chapter_count: int = 0
+    is_published: bool = True
+    similarity_score: float = 0.0
+    average_rating: float = 0.0
+    rating_count: int = 0
+
+
+class StudentRecommendationsSeedResponse(BaseModel):
+    """
+    Recommendations payload:
+    - enrolled_courses / candidate_courses: input pools
+    - recommended_courses: TF-IDF relatedness + star-rating ranked results
+    """
+
+    enrolled_courses: List[StudentRecommendationCourseItem]
+    candidate_courses: List[StudentRecommendationCourseItem]
+    recommended_courses: List[StudentRecommendedCourseItem] = []
+
+
 # Course-completion activity dump (written only after final chapter quiz)
 class StudentActivityItem(BaseModel):
     Quiz_ID: int
