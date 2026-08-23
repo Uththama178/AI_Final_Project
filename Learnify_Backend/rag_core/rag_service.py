@@ -17,7 +17,7 @@ from rag_core.generator import generate_mcqs_from_context
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_TOP_K = 5
+DEFAULT_TOP_K = 10
 
 
 def _run_rag_pipeline_on_text(

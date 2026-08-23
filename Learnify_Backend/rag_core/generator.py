@@ -214,6 +214,70 @@ def _build_t5_prompt(passage: str) -> str:
     )
 
 
+# Lightweight stopwords for passage entity extraction (parser §4 only)
+_PASSAGE_ENTITY_STOPWORDS = frozenset(
+    {
+        "a", "an", "the", "and", "or", "but", "if", "in", "on", "at", "to", "for",
+        "of", "is", "are", "was", "were", "be", "been", "being", "have", "has",
+        "had", "do", "does", "did", "will", "would", "could", "should", "may",
+        "might", "must", "can", "this", "that", "these", "those", "it", "its",
+        "as", "by", "from", "with", "about", "into", "through", "during", "before",
+        "after", "above", "below", "between", "out", "off", "over", "under", "again",
+        "further", "then", "once", "here", "there", "when", "where", "why", "how",
+        "all", "each", "few", "more", "most", "other", "some", "such", "no", "nor",
+        "not", "only", "own", "same", "so", "than", "too", "very", "just", "also",
+        "which", "what", "who", "whom", "whose", "their", "them", "they", "we",
+        "you", "your", "our", "his", "her", "him", "she", "he", "i", "me", "my",
+    }
+)
+
+
+def _extract_passage_entities(passage: str, *, exclude: set[str] | None = None) -> list[str]:
+    """
+    Derive distinct content words / short phrases from a retrieved passage
+    for use as context-driven MCQ distractors (parser §4 only).
+    """
+    text = " ".join((passage or "").split()).strip()
+    if not text:
+        return []
+
+    exclude_norm = {e.lower() for e in (exclude or set()) if e}
+    candidates: list[str] = []
+    seen: set[str] = set()
+
+    def _consider(raw: str) -> None:
+        value = " ".join(raw.split()).strip(" ,.;:!?\"'()[]")
+        if not value:
+            return
+        key = value.lower()
+        if key in seen or key in exclude_norm:
+            return
+        # Drop phrases that are only stopwords
+        parts = re.findall(r"[A-Za-z][A-Za-z0-9\-]*", value)
+        content = [p for p in parts if p.lower() not in _PASSAGE_ENTITY_STOPWORDS and len(p) >= 4]
+        if not content:
+            return
+        if len(value) < 4:
+            return
+        seen.add(key)
+        candidates.append(value)
+
+    # Prefer short multi-word noun-like phrases (2–3 tokens)
+    for match in re.finditer(
+        r"\b([A-Z][a-zA-Z0-9\-]*(?:\s+[A-Za-z][a-zA-Z0-9\-]*){1,2})\b",
+        text,
+    ):
+        _consider(match.group(1))
+
+    # Then single content tokens (length >= 4, not stopwords)
+    for token in re.findall(r"[A-Za-z][A-Za-z0-9\-]{3,}", text):
+        if token.lower() in _PASSAGE_ENTITY_STOPWORDS:
+            continue
+        _consider(token)
+
+    return candidates
+
+
 def _parse_mcq_output(raw_text: str, passage: str) -> dict[str, Any] | None:
     """
     Parse model text into {question, options, correct_answer, explanation}.
@@ -378,30 +442,34 @@ def _parse_mcq_output(raw_text: str, passage: str) -> dict[str, Any] | None:
         question = " ".join(question.split())
 
     # -------------------------------------------------------------
-    # 4) Passage-word fallback ONLY when no inline A–D options were found
+    # 4) Context-driven distractors ONLY when no inline A–D options
+    #    were found. Never fabricate "Option N" labels.
     # -------------------------------------------------------------
     if not inline_options_found and len(options) < 4:
-        words = [w.strip(",.!?\"'") for w in passage.split() if len(w.strip(",.!?\"'")) > 3]
-        unique_words: list[str] = []
-        for w in words:
-            if w.lower() not in {u.lower() for u in unique_words}:
-                unique_words.append(w)
-            if len(unique_words) >= 4:
-                break
-        while len(unique_words) < 4:
-            unique_words.append(f"Option {len(unique_words) + 1}")
+        exclude = {question} if question else set()
+        exclude.update(options)
+        entities = _extract_passage_entities(passage, exclude=exclude)
+
         if len(options) == 0:
-            options = unique_words[:4]
-            correct_answer = options[0]
+            if len(entities) >= 4:
+                options = entities[:4]
+                correct_answer = options[0]
+            # else: leave incomplete → fail closed below (return None)
         else:
-            while len(options) < 4:
-                options.append(unique_words[len(options)])
+            existing = {o.lower() for o in options}
+            for entity in entities:
+                if len(options) >= 4:
+                    break
+                if entity.lower() not in existing:
+                    options.append(entity)
+                    existing.add(entity.lower())
+            # If still < 4, do not invent fillers — fail closed below
 
     if not question:
         return None
 
     if len(options) < 4:
-        # Incomplete parse even after inline extraction — reject so caller can fall back
+        # Incomplete parse after context-driven fill — reject so caller can fall back
         return None
 
     if not correct_answer:
