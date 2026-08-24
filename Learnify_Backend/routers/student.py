@@ -447,8 +447,11 @@ def get_student_recommendations(
     current_user: models.AppUser = Depends(get_current_user),
 ):
     """
-    Return enrolled/candidate pools plus top related courses ranked by
+    Return enrolled/candidate pools plus related courses ranked by
     TF-IDF cosine similarity (Title/Description) and marketplace star averages.
+
+    ``recommended_courses`` may contain 1–5 items (or 0). A full set of 5 is
+    not required — whatever valid matches exist (up to the max of 5) is returned.
     """
     _require_student(current_user)
     student = _get_student_profile(db, current_user)
@@ -465,6 +468,8 @@ def get_student_recommendations(
         candidate_courses,
         average_ratings=averages,
         rating_counts=counts,
+        # Soft max only; fewer matches are returned as-is
+        top_k=5,
     )
 
     recommended = [

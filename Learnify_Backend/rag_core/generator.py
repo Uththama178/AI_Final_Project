@@ -21,16 +21,19 @@ _hf_load_failed = False
 # Optional MCQ quality guardrails (never hard-fail the generator if import fails)
 _filter_valid_mcqs: Optional[Callable[..., list]] = None
 _raw_generation_looks_garbage: Optional[Callable[..., bool]] = None
+_is_valid_mcq: Optional[Callable[..., bool]] = None
 try:
     from rag_core.mcq_validator import (  # type: ignore
         filter_valid_mcqs as _filter_valid_mcqs,
         raw_generation_looks_garbage as _raw_generation_looks_garbage,
+        is_valid_mcq as _is_valid_mcq,
     )
 except Exception:
     try:
         from .mcq_validator import (  # type: ignore
             filter_valid_mcqs as _filter_valid_mcqs,
             raw_generation_looks_garbage as _raw_generation_looks_garbage,
+            is_valid_mcq as _is_valid_mcq,
         )
     except Exception:
         logger.warning(
@@ -38,68 +41,59 @@ except Exception:
         )
         _filter_valid_mcqs = None
         _raw_generation_looks_garbage = None
+        _is_valid_mcq = None
+
+# Smart retry: regenerate with rotated passages before any final padding
+MAX_GENERATION_ATTEMPTS = 3
 
 
 def generate_mcqs_from_context(context: str, num_questions: int = 5) -> list[dict[str, Any]]:
     """
     Generate structured MCQs based on the provided context chunks.
 
-    Tries the Hugging Face Flan-T5 MCQ model first.
-    On any failure, falls back to the rule-based generator.
-
-    Args:
-        context: Text chunks retrieved from the vector store.
-        num_questions: Target number of MCQs to generate (default: 5).
-
-    Returns:
-        A list of dictionaries with keys: question, options, correct_answer, explanation.
+    Uses Flan-T5 with a smart retry loop (drop invalid → regenerate on rotated
+    passages). Never fills gaps with Not X / _alt. If still short after max
+    attempts, pads only with clean neutral templates so the list length is exact.
     """
+    target = max(1, int(num_questions) if num_questions else 5)
+
     if not context or not context.strip():
-        logger.warning("Empty context provided to generator. Returning default response.")
-        return _get_fallback_questions()
+        logger.warning("Empty context provided to generator. Returning clean fallback set.")
+        return _ensure_exact_mcq_count([], context="", num_questions=target)
 
     try:
-        mcqs = _generate_with_hf_t5_model(context, num_questions)
-        if _filter_valid_mcqs is not None and mcqs:
-            try:
-                mcqs = _filter_valid_mcqs(mcqs)
-            except Exception:
-                logger.exception("MCQ validator filter failed; keeping pre-filter HF results.")
-
-        if mcqs and len(mcqs) >= num_questions:
-            logger.info(
-                "Generated %d MCQ(s) via Hugging Face model %s",
-                len(mcqs),
-                HF_MCQ_MODEL_ID,
-            )
-            return mcqs[:num_questions]
-
-        if mcqs:
-            # Partial HF success after validation — fill the rest with rule-based items
-            logger.warning(
-                "Only %d valid HF MCQ(s); topping up with rule-based generator.",
-                len(mcqs),
-            )
-            rule_mcqs = _generate_rule_based_mcqs(context, num_questions)
-            merged = list(mcqs)
-            for item in rule_mcqs:
-                if len(merged) >= num_questions:
-                    break
-                merged.append(item)
-            return merged[:num_questions] if merged else _get_fallback_questions()
-
-        logger.warning("HF model returned no usable MCQs; falling back to rule-based generator.")
-        return _generate_rule_based_mcqs(context, num_questions)
+        mcqs = _generate_with_hf_t5_model(context, target)
+        return _ensure_exact_mcq_count(mcqs, context=context, num_questions=target)
     except Exception:
         logger.exception(
-            "HF MCQ generation failed for model %s; falling back to rule-based generator.",
+            "HF MCQ generation failed for model %s; using clean context fallbacks.",
             HF_MCQ_MODEL_ID,
         )
+        return _ensure_exact_mcq_count([], context=context, num_questions=target)
+
+
+def _ensure_exact_mcq_count(
+    mcqs: list[dict[str, Any]],
+    *,
+    context: str,
+    num_questions: int,
+) -> list[dict[str, Any]]:
+    """Filter (no artificial Not X) then pad with clean templates to exact count."""
+    if _filter_valid_mcqs is not None:
         try:
-            return _generate_rule_based_mcqs(context, num_questions)
+            return _filter_valid_mcqs(
+                mcqs or [],
+                context=context,
+                num_questions=num_questions,
+                pad=True,
+            )
         except Exception:
-            logger.exception("Rule-based MCQ generation also failed; returning static fallback.")
-            return _get_fallback_questions()
+            logger.exception("Final MCQ filter/pad failed; using local clean templates.")
+
+    cleaned = list(mcqs or [])
+    while len(cleaned) < num_questions:
+        cleaned.extend(_get_fallback_questions())
+    return cleaned[:num_questions]
 
 
 def _load_hf_mcq_model() -> tuple[Any, Any]:
@@ -184,26 +178,47 @@ def _clean_context_for_t5(text: str) -> str:
     return cleaned
 
 
-def _split_context_passages(context: str, num_questions: int) -> list[str]:
-    """Split retrieved context into short passages for per-question generation."""
+def _split_context_passages(
+    context: str,
+    num_questions: int,
+    *,
+    rotation: int = 0,
+) -> list[str]:
+    """
+    Split retrieved context into short passages for per-question generation.
+
+    ``rotation`` shifts which sentence groups are used so retry attempts see
+    additional / rotated RAG spans instead of always the same first N chunks.
+    """
+    target = max(1, int(num_questions) if num_questions else 5)
     sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", context) if len(s.strip()) > 20]
     if not sentences:
         cleaned = " ".join(context.split())
         return [cleaned[:400]] if cleaned else []
 
-    passages: list[str] = []
-    # Group nearby sentences so each prompt has enough context
-    for i in range(0, len(sentences), max(1, len(sentences) // max(num_questions, 1))):
+    # Build overlapping 2-sentence groups across the full sentence list
+    groups: list[str] = []
+    for i in range(len(sentences)):
         chunk = " ".join(sentences[i : i + 2]).strip()
         if chunk:
-            passages.append(chunk[:500])
-        if len(passages) >= num_questions:
+            groups.append(chunk[:500])
+    if not groups:
+        groups = [s[:500] for s in sentences]
+
+    start = (max(0, int(rotation)) * max(1, target)) % len(groups)
+    rotated = groups[start:] + groups[:start]
+
+    passages: list[str] = []
+    for chunk in rotated:
+        if chunk not in passages:
+            passages.append(chunk)
+        if len(passages) >= target:
             break
 
-    while len(passages) < num_questions and sentences:
-        passages.append(sentences[len(passages) % len(sentences)][:500])
+    while len(passages) < target and groups:
+        passages.append(groups[len(passages) % len(groups)])
 
-    return passages[:num_questions]
+    return passages[:target]
 
 
 def _build_t5_prompt(passage: str) -> str:
@@ -484,7 +499,12 @@ def _parse_mcq_output(raw_text: str, passage: str) -> dict[str, Any] | None:
 
 
 def _generate_with_hf_t5_model(context: str, num_questions: int = 5) -> list[dict[str, Any]]:
-    """Run Flan-T5 MCQ generation over context passages."""
+    """
+    Run Flan-T5 MCQ generation with a smart retry loop.
+
+    Drops low-quality / invalid items and regenerates on rotated RAG passages
+    for up to MAX_GENERATION_ATTEMPTS attempts. Does not invent Not X options.
+    """
     import torch
 
     try:
@@ -497,131 +517,233 @@ def _generate_with_hf_t5_model(context: str, num_questions: int = 5) -> list[dic
     # Clean retrieved RAG text once before passage split / T5 prompting
     cleaned_context = _clean_context_for_t5(context)
     if not cleaned_context:
-        # Avoid hard-failing generation if cleaning was too aggressive
         cleaned_context = " ".join((context or "").split()).strip()
-
-    passages = _split_context_passages(cleaned_context, num_questions)
-    if not passages:
+    if not cleaned_context:
         raise ValueError("No usable passages extracted from context for HF generation.")
 
     device = next(model.parameters()).device
-    mcqs: list[dict[str, Any]] = []
+    valid: list[dict[str, Any]] = []
+    seen_questions: set[str] = set()
+    target = max(1, int(num_questions) if num_questions else 5)
 
-    for passage in passages:
-        # Light per-passage pass so leftover artifacts never reach the prompt
-        passage = _clean_context_for_t5(passage) or " ".join(passage.split()).strip()
-        if not passage:
-            continue
-        prompt = _build_t5_prompt(passage)
-        inputs = tokenizer(
-            prompt,
-            return_tensors="pt",
-            max_length=512,
-            truncation=True,
-            padding=True,
+    for attempt in range(MAX_GENERATION_ATTEMPTS):
+        if len(valid) >= target:
+            break
+
+        needed = target - len(valid)
+        # Later attempts request a larger rotated pool to surface new spans
+        pool_size = needed + attempt * max(2, needed)
+        passages = _split_context_passages(
+            cleaned_context,
+            pool_size,
+            rotation=attempt,
         )
-        inputs = {k: v.to(device) for k, v in inputs.items()}
+        if not passages:
+            break
 
-        with torch.no_grad():
-            output_ids = model.generate(
-                **inputs,
-                max_length=128,
-                num_beams=4,
-                early_stopping=True,
-                no_repeat_ngram_size=2,
-                repetition_penalty=1.2,
+        logger.info(
+            "MCQ generation attempt %d/%d — need %d more; trying %d passage(s).",
+            attempt + 1,
+            MAX_GENERATION_ATTEMPTS,
+            needed,
+            len(passages),
+        )
+
+        batch: list[dict[str, Any]] = []
+        for passage in passages:
+            if len(valid) + len(batch) >= target:
+                break
+
+            passage = _clean_context_for_t5(passage) or " ".join(passage.split()).strip()
+            if not passage:
+                continue
+
+            prompt = _build_t5_prompt(passage)
+            inputs = tokenizer(
+                prompt,
+                return_tensors="pt",
+                max_length=512,
+                truncation=True,
+                padding=True,
+            )
+            inputs = {k: v.to(device) for k, v in inputs.items()}
+
+            with torch.no_grad():
+                output_ids = model.generate(
+                    **inputs,
+                    max_length=128,
+                    num_beams=4,
+                    early_stopping=True,
+                    no_repeat_ngram_size=2,
+                    repetition_penalty=1.2,
+                )
+
+            raw = tokenizer.decode(output_ids[0], skip_special_tokens=True)
+
+            if _raw_generation_looks_garbage is not None:
+                try:
+                    if _raw_generation_looks_garbage(raw):
+                        logger.warning("Skipping garbage raw T5 output for one passage.")
+                        continue
+                except Exception:
+                    logger.exception(
+                        "raw_generation_looks_garbage check failed; continuing with parse."
+                    )
+
+            parsed = _parse_mcq_output(raw, passage)
+            if not parsed:
+                continue
+
+            q_key = " ".join(str(parsed.get("question") or "").lower().split())
+            if not q_key or q_key in seen_questions:
+                continue
+
+            if _is_valid_mcq is not None:
+                try:
+                    if not _is_valid_mcq(parsed, context=cleaned_context):
+                        continue
+                except Exception:
+                    logger.exception("is_valid_mcq failed; keeping parsed item for batch filter.")
+
+            batch.append(parsed)
+
+        if batch and _filter_valid_mcqs is not None:
+            try:
+                batch = _filter_valid_mcqs(
+                    batch,
+                    context=cleaned_context,
+                    num_questions=len(batch),
+                    pad=False,
+                )
+            except Exception:
+                logger.exception("Batch filter_valid_mcqs(pad=False) failed; using raw batch.")
+
+        for item in batch:
+            q_key = " ".join(str(item.get("question") or "").lower().split())
+            if not q_key or q_key in seen_questions:
+                continue
+            seen_questions.add(q_key)
+            valid.append(item)
+            if len(valid) >= target:
+                break
+
+        if len(valid) < target and attempt + 1 < MAX_GENERATION_ATTEMPTS:
+            logger.warning(
+                "Only %d/%d valid MCQ(s) after attempt %d; retrying with rotated passages.",
+                len(valid),
+                target,
+                attempt + 1,
             )
 
-        raw = tokenizer.decode(output_ids[0], skip_special_tokens=True)
+    if not valid:
+        raise ValueError("HF model produced no valid MCQ outputs after retry attempts.")
 
-        # Guardrail: skip clearly garbage / single-letter raw T5 strings
-        if _raw_generation_looks_garbage is not None:
-            try:
-                if _raw_generation_looks_garbage(raw):
-                    logger.warning("Skipping garbage raw T5 output for one passage.")
-                    continue
-            except Exception:
-                logger.exception(
-                    "raw_generation_looks_garbage check failed; continuing with parse."
-                )
-
-        parsed = _parse_mcq_output(raw, passage)
-        if parsed:
-            mcqs.append(parsed)
-
-    # Guardrail: drop weak / empty-option / duplicate-style MCQs
-    if _filter_valid_mcqs is not None and mcqs:
-        try:
-            before = len(mcqs)
-            mcqs = _filter_valid_mcqs(mcqs)
-            if len(mcqs) < before:
-                logger.info(
-                    "MCQ validator kept %d/%d HF question(s).",
-                    len(mcqs),
-                    before,
-                )
-        except Exception:
-            logger.exception("filter_valid_mcqs failed; using unfiltered parsed MCQs.")
-
-    if not mcqs:
-        raise ValueError("HF model produced no valid MCQ outputs after validation.")
-
-    # Do NOT duplicate weak HF items. Caller tops up with rule-based fallback.
-    return mcqs[:num_questions]
+    logger.info(
+        "Collected %d valid HF MCQ(s) for target %d (before final pad if needed).",
+        len(valid),
+        target,
+    )
+    return valid[:target]
 
 
 def _generate_rule_based_mcqs(context: str, num_questions: int = 5) -> list[dict[str, Any]]:
-    """Extract key sentences from context and convert them into structured MCQs."""
-    # Clean and split context into sentences
+    """
+    Context-tied review MCQs without Not X / _alt placeholders.
+    Used only as a last-resort source of structured items before clean template pad.
+    """
     sentences = [s.strip() for s in re.split(r"(?<=[.!?]) +", context) if len(s.strip()) > 20]
-
     if not sentences:
         return _get_fallback_questions()
 
-    mcqs = []
+    mcqs: list[dict[str, Any]] = []
     for index, sentence in enumerate(sentences[:num_questions]):
-        words = sentence.split()
-        if len(words) < 5:
+        words = [
+            w.strip(",.!?\"'")
+            for w in sentence.split()
+            if len(w.strip(",.!?\"'")) >= 4
+        ]
+        unique: list[str] = []
+        for w in words:
+            if w.lower() not in {u.lower() for u in unique}:
+                unique.append(w)
+            if len(unique) >= 4:
+                break
+        if len(unique) < 4:
             continue
 
-        # Choose a key word/phrase from sentence to blank out
-        target_word = words[len(words) // 2].strip(",.!?")
-        question_text = sentence.replace(target_word, "_______")
+        options = unique[:4]
+        mcqs.append(
+            {
+                "question": (
+                    f"Which term is most directly supported by this statement: "
+                    f"\"{sentence[:180]}\"?"
+                ),
+                "options": options,
+                "correct_answer": options[0],
+                "explanation": f"Based on the text: '{sentence}'",
+            }
+        )
 
-        options = [
-            target_word,
-            f"Not {target_word}",
-            f"{target_word}_alt",
-            "None of the above"
-        ]
-
-        mcqs.append({
-            "question": f"Q{index + 1}: Fill in the blank: '{question_text}'",
-            "options": options,
-            "correct_answer": target_word,
-            "explanation": f"Based on the text: '{sentence}'"
-        })
-
-    # Top up with fallback questions if fewer sentences than required
-    while len(mcqs) < num_questions:
-        fallback_idx = len(mcqs) + 1
-        mcqs.append({
-            "question": f"Q{fallback_idx}: What is the main subject discussed in this chapter snippet?",
-            "options": ["Core Concepts", "Advanced Implementation", "General Overview", "None of the above"],
-            "correct_answer": "Core Concepts",
-            "explanation": "Extracted key focus point from the provided study material."
-        })
-
-    return mcqs
+    return mcqs if mcqs else _get_fallback_questions()
 
 
 def _get_fallback_questions() -> list[dict[str, Any]]:
-    """Return default fallback MCQs when no context is available."""
-    return [
+    """Clean neutral templates — never Not X / _alt — always enough for a full set of 5."""
+    templates = [
         {
-            "question": "What is the primary focus of this learning module?",
-            "options": ["Core Concepts", "Implementation Details", "Practical Examples", "All of the above"],
-            "correct_answer": "All of the above",
-            "explanation": "General summary question generated for this chapter."
-        }
+            "question": "Which approach best supports understanding the provided learning material?",
+            "options": [
+                "Focus on the main ideas, terms, and relationships in the content",
+                "Ignore explanations and memorize unrelated labels",
+                "Assume every sentence is a formatting error",
+                "Replace the lesson with random filler phrases",
+            ],
+            "correct_answer": "Focus on the main ideas, terms, and relationships in the content",
+            "explanation": "Neutral review item used when source text is too limited for more generations.",
+        },
+        {
+            "question": "What should a learner prioritize when reviewing this chapter material?",
+            "options": [
+                "Key concepts and how they connect in the text",
+                "Only page numbers and headers",
+                "Unrelated topics from other subjects",
+                "Decorative symbols with no meaning",
+            ],
+            "correct_answer": "Key concepts and how they connect in the text",
+            "explanation": "Clean fallback emphasizing comprehension of the source material.",
+        },
+        {
+            "question": "Which statement reflects careful study of the lesson content?",
+            "options": [
+                "Relate new terms to examples and explanations in the material",
+                "Skip the explanations entirely",
+                "Treat all sentences as noise",
+                "Study only empty placeholder phrases",
+            ],
+            "correct_answer": "Relate new terms to examples and explanations in the material",
+            "explanation": "Neutral study-habit item used to complete a five-question set.",
+        },
+        {
+            "question": "How can the provided material be used most effectively for practice?",
+            "options": [
+                "Use it to check understanding of the central ideas presented",
+                "Discard it because it has no educational value",
+                "Replace it with random unrelated quizzes",
+                "Focus only on formatting artifacts",
+            ],
+            "correct_answer": "Use it to check understanding of the central ideas presented",
+            "explanation": "Clean fallback for short or sparse source contexts.",
+        },
+        {
+            "question": "Which choice best describes a meaningful takeaway from study material?",
+            "options": [
+                "Understanding core ideas supports further learning",
+                "Core ideas should always be ignored",
+                "All concepts are identical with no distinction",
+                "The material exists only to confuse learners",
+            ],
+            "correct_answer": "Understanding core ideas supports further learning",
+            "explanation": "Final clean template so the API can always return five structured questions.",
+        },
     ]
+    return [dict(item) for item in templates]

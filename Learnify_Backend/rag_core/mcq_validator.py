@@ -565,19 +565,16 @@ def filter_valid_mcqs(
     context: str | None = None,
     num_questions: int = TARGET_MCQ_COUNT,
     min_keep: int = 0,
+    pad: bool = True,
 ) -> list[dict[str, Any]]:
     """
-    Keep only high-quality MCQs, then return **exactly** ``num_questions`` items
-    (default 5).
+    Keep only high-quality MCQs.
 
-    - Filters weak, nonsensical, poorly parsed, or misaligned questions
-    - Deduplicates by normalized question text
-    - Pads with clean, context-aware fallbacks when fewer than ``num_questions``
-      survive (uses ``context`` when provided; otherwise harvests topic cues
-      from the input MCQ batch)
+    When ``pad`` is True (default), return **exactly** ``num_questions`` items,
+    filling gaps with clean context-aware templates (never Not X / _alt).
 
-    ``min_keep`` is retained for API compatibility but does not reduce the
-    final length below ``num_questions`` — padding always fills the gap.
+    When ``pad`` is False, return only validated items (may be fewer than
+    ``num_questions``) — used by the generator smart-retry loop.
     """
     target = max(1, int(num_questions) if num_questions else TARGET_MCQ_COUNT)
     source = list(mcqs or [])
@@ -609,11 +606,14 @@ def filter_valid_mcqs(
                 or "Validated question retained from model output.",
             }
         )
-        if len(kept) >= target:
+        if pad and len(kept) >= target:
             break
 
     # min_keep is informational only for callers that checked length historically
     _ = min_keep
+
+    if not pad:
+        return kept
 
     if len(kept) < target:
         pads = _build_context_aware_fallbacks(

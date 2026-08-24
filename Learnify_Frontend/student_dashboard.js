@@ -664,28 +664,68 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     function mapRiskLabelForDisplay(label) {
+        // Frontend-only display mapping (API still returns Low/Medium/High Risk).
+        // Low → Excellent | Medium → Good | High → Risk
         const RISK_LABEL_DISPLAY = {
-            L: "Low Risk",
-            M: "Medium Risk",
-            H: "High Risk",
-            l: "Low Risk",
-            m: "Medium Risk",
-            h: "High Risk",
-            Low: "Low Risk",
-            Medium: "Medium Risk",
-            High: "High Risk",
+            L: "Excellent",
+            M: "Good",
+            H: "Risk",
+            l: "Excellent",
+            m: "Good",
+            h: "Risk",
+            Low: "Excellent",
+            Medium: "Good",
+            High: "Risk",
+            LOW: "Excellent",
+            MEDIUM: "Good",
+            HIGH: "Risk",
+            "Low Risk": "Excellent",
+            "Medium Risk": "Good",
+            "High Risk": "Risk",
+            "low risk": "Excellent",
+            "medium risk": "Good",
+            "high risk": "Risk",
         };
         const raw = String(label == null ? "" : label).trim();
         if (!raw) return "";
-        return RISK_LABEL_DISPLAY[raw] || RISK_LABEL_DISPLAY[raw.toUpperCase()] || raw;
+        if (RISK_LABEL_DISPLAY[raw]) return RISK_LABEL_DISPLAY[raw];
+        if (RISK_LABEL_DISPLAY[raw.toUpperCase()]) return RISK_LABEL_DISPLAY[raw.toUpperCase()];
+
+        const lower = raw.toLowerCase().replace(/_/g, " ");
+        if (lower === "low" || lower === "low risk") return "Excellent";
+        if (lower === "medium" || lower === "medium risk") return "Good";
+        if (lower === "high" || lower === "high risk") return "Risk";
+        return raw;
     }
 
     function classifyRiskTone(label) {
+        // Keep CSS tones aligned with original risk severity (not renamed labels).
         const text = String(label || "").toLowerCase().replace(/_/g, " ").trim();
         if (!text) return "unknown";
-        if (text === "h" || text === "high" || text === "high risk") return "high";
-        if (text === "m" || text === "medium" || text === "medium risk") return "medium";
-        if (text === "l" || text === "low" || text === "low risk") return "low";
+        if (
+            text === "h" ||
+            text === "high" ||
+            text === "high risk" ||
+            text === "risk"
+        ) {
+            return "high";
+        }
+        if (
+            text === "m" ||
+            text === "medium" ||
+            text === "medium risk" ||
+            text === "good"
+        ) {
+            return "medium";
+        }
+        if (
+            text === "l" ||
+            text === "low" ||
+            text === "low risk" ||
+            text === "excellent"
+        ) {
+            return "low";
+        }
         if (
             text.includes("high") ||
             text.includes("fail") ||
@@ -699,13 +739,13 @@ document.addEventListener("DOMContentLoaded", function () {
             text.includes("medium") ||
             text.includes("moderate") ||
             text.includes("average") ||
-            text.includes("fair")
+            text.includes("fair") ||
+            text.includes("good")
         ) {
             return "medium";
         }
         if (
             text.includes("low") ||
-            text.includes("good") ||
             text.includes("excellent") ||
             text.includes("pass") ||
             text.includes("safe") ||
@@ -721,7 +761,8 @@ document.addEventListener("DOMContentLoaded", function () {
             mapRiskLabelForDisplay(label) ||
             mapRiskLabelForDisplay(normalized) ||
             "Pending";
-        const tone = classifyRiskTone(label || normalized);
+        // Tone from API/raw labels so "Excellent" still uses the low-risk (green) style
+        const tone = classifyRiskTone(label || normalized || display);
         return `<span class="sd-risk-badge sd-risk-${tone}">${escapeHtml(display)}</span>`;
     }
 
@@ -806,7 +847,7 @@ document.addEventListener("DOMContentLoaded", function () {
                     <td data-label="Course Name">
                         <span class="sd-result-course-name">${escapeHtml(course.Title || "Untitled Course")}</span>
                     </td>
-                    <td data-label="Predicted Performance / Risk">${badgeHtml}</td>
+                    <td data-label="Predicted Performance">${badgeHtml}</td>
                 </tr>
             `);
         }

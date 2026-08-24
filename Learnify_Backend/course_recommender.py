@@ -3,6 +3,10 @@ Content-based course recommendations using TF-IDF + cosine similarity,
 then ranked by marketplace average star ratings.
 
 Pure ranking helpers — does not alter DB schemas or other app modules.
+
+Quantity policy:
+  - Maximum of MAX_RECOMMENDATIONS (5) items
+  - Any smaller valid count (1–4) is returned as-is — a full set of 5 is NOT required
 """
 
 from __future__ import annotations
@@ -13,7 +17,9 @@ import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-DEFAULT_TOP_K = 5
+# Soft ceiling only — fewer matches are still returned successfully
+MAX_RECOMMENDATIONS = 5
+DEFAULT_TOP_K = MAX_RECOMMENDATIONS
 DEFAULT_MIN_SIMILARITY = 0.05
 
 
@@ -36,6 +42,15 @@ def _as_course_records(courses: Sequence[Any]) -> list[dict[str, Any]]:
     return records
 
 
+def _clamp_top_k(top_k: int | None) -> int:
+    """Cap at MAX_RECOMMENDATIONS; never force a minimum count of 5."""
+    try:
+        n = int(top_k) if top_k is not None else MAX_RECOMMENDATIONS
+    except (TypeError, ValueError):
+        n = MAX_RECOMMENDATIONS
+    return max(0, min(n, MAX_RECOMMENDATIONS))
+
+
 def rank_related_courses(
     enrolled_courses: Sequence[Any],
     candidate_courses: Sequence[Any],
@@ -49,11 +64,18 @@ def rank_related_courses(
     Compare enrolled vs candidate course Title/Description with TF-IDF cosine
     similarity, then sort by similarity and marketplace average stars.
 
-    Returns up to ``top_k`` candidate dicts enriched with:
+    Returns **up to** ``top_k`` (capped at 5) candidate dicts. If only 1–4
+    valid matches exist, those are returned — a full set of 5 is not required.
+
+    Each item is enriched with:
       - similarity_score
       - average_rating
       - rating_count
     """
+    limit = _clamp_top_k(top_k)
+    if limit == 0:
+        return []
+
     enrolled = _as_course_records(enrolled_courses)
     candidates = _as_course_records(candidate_courses)
     avg_map = {int(k): float(v) for k, v in (average_ratings or {}).items()}
@@ -115,7 +137,8 @@ def rank_related_courses(
         kind="mergesort",
     )
 
-    top = df.head(max(1, int(top_k))).to_dict(orient="records")
+    # Flexible count: take whatever valid matches exist, capped at ``limit`` (≤ 5)
+    top = df.head(limit).to_dict(orient="records")
     # Ensure JSON-friendly native types
     for row in top:
         row["Course_ID"] = int(row["Course_ID"])

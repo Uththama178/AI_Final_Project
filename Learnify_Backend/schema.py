@@ -232,6 +232,7 @@ class StudentRecommendationsSeedResponse(BaseModel):
     Recommendations payload:
     - enrolled_courses / candidate_courses: input pools
     - recommended_courses: TF-IDF relatedness + star-rating ranked results
+      (0–5 items; fewer than 5 is valid and should be shown as-is)
     """
 
     enrolled_courses: List[StudentRecommendationCourseItem]
